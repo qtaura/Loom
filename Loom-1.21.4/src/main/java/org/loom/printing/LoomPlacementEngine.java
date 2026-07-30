@@ -22,19 +22,23 @@ import static com.zenith.Globals.INPUTS;
  * to interact with {@code INPUTS}, send placement packets, or control
  * player rotation for placement purposes.
  *
- * <h3>Placement Pipeline (per call)</h3>
+ * <h3>Single-Shot Design</h3>
+ * <p>Each call to {@code placeBlock} or {@code placeCarpet} performs exactly
+ * one placement attempt: pre-checks, rotation, packet send, return.
+ * Verification and retry logic belong to the caller
+ * ({@link org.loom.printing.PrinterController}).
+ *
+ * <h3>Placement Pipeline</h3>
  * <ol>
  *   <li>Pre-checks: obstruction, material availability, reach distance</li>
  *   <li>Select correct hotbar slot via {@link LoomInventoryManager}</li>
  *   <li>Calculate placement face and look angle</li>
- *   <li>Submit rotation to Zenith {@code INPUTS}</li>
- *   <li>Send placement packet directly to server</li>
- *   <li>Verify placement via {@link WorldScanner}</li>
- *   <li>Retry on failure (up to configured max)</li>
+ *   <li>Submit rotation to Zenith {@code INPUTS} at priority 7500</li>
+ *   <li>Send {@code ServerboundUseItemOnPacket} + {@code ServerboundSwingPacket}</li>
+ *   <li>Return {@link PlacementResult#SUCCESS}</li>
  * </ol>
  *
- * <p>The engine is stateless between calls. Retry logic is contained
- * within a single invocation.
+ * <p>The engine is stateless between calls.
  */
 public class LoomPlacementEngine implements PlacementEngine {
 
@@ -45,16 +49,13 @@ public class LoomPlacementEngine implements PlacementEngine {
     private final WorldScanner worldScanner;
     private final LoomInventoryManager inventoryManager;
     private final LoomLogger logger;
-    private final int maxRetries;
 
     public LoomPlacementEngine(WorldScanner worldScanner,
                                LoomInventoryManager inventoryManager,
-                               LoomLogger logger,
-                               int maxRetries) {
+                               LoomLogger logger) {
         this.worldScanner = worldScanner;
         this.inventoryManager = inventoryManager;
         this.logger = logger;
-        this.maxRetries = maxRetries;
     }
 
     // ======================================================================
@@ -68,231 +69,132 @@ public class LoomPlacementEngine implements PlacementEngine {
 
     @Override
     public PlacementResult placeCarpet(int worldX, int worldY, int worldZ, Material material) {
-        // For carpet: worldY is the supporting block below.
-        // The carpet goes at worldY+1. We click the top face of (worldX, worldY, worldZ).
         return placeInternal(worldX, worldY, worldZ, material, true);
     }
 
     @Override
     public boolean canPlaceAt(int worldX, int worldY, int worldZ, Material material) {
-        double playerX = CACHE.getPlayerCache().getX();
-        double playerY = CACHE.getPlayerCache().getY();
-        double playerZ = CACHE.getPlayerCache().getZ();
+        int checkY = material.isCarpet() ? worldY + 1 : worldY;
 
-        // Reach check: distance from player eye to block center
-        int targetY = material.isCarpet() ? worldY + 1 : worldY;
-        double dx = (worldX + 0.5) - playerX;
-        double dy = (targetY + 0.5) - (playerY + 1.62);
-        double dz = (worldZ + 0.5) - playerZ;
-        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-        if (dist > MAX_REACH) return false;
-
-        // Obstruction check
-        if (material.isCarpet()) {
-            int carpetY = worldY + 1;
-            if (worldScanner.isObstructed(worldX, carpetY, worldZ)) return false;
-        } else {
-            if (worldScanner.isObstructed(worldX, worldY, worldZ)) return false;
-        }
-
-        // Material check
-        if (!inventoryManager.hasMaterial(material)) return false;
-
-        return true;
+        if (!isInReach(worldX, checkY, worldZ)) return false;
+        if (worldScanner.isObstructed(worldX, checkY, worldZ)) return false;
+        return inventoryManager.hasMaterial(material);
     }
 
     @Override
     public String getPlacementFace(int worldX, int worldY, int worldZ) {
-        // Determine best face to click based on player position relative to target.
-        // For carpet (always placed on top of supporting block), just return "up".
-        // For blocks, choose the face closest to the player's line of sight.
+        double px = CACHE.getPlayerCache().getX();
+        double py = CACHE.getPlayerCache().getEyeY();
+        double pz = CACHE.getPlayerCache().getZ();
 
-        double playerX = CACHE.getPlayerCache().getX();
-        double playerY = CACHE.getPlayerCache().getEyeY();
-        double playerZ = CACHE.getPlayerCache().getZ();
+        double dx = (worldX + 0.5) - px;
+        double dy = (worldY + 0.5) - py;
+        double dz = (worldZ + 0.5) - pz;
 
-        double targetCenterX = worldX + 0.5;
-        double targetCenterY = worldY + 0.5;
-        double targetCenterZ = worldZ + 0.5;
+        double ax = Math.abs(dx);
+        double ay = Math.abs(dy);
+        double az = Math.abs(dz);
 
-        double dx = targetCenterX - playerX;
-        double dy = targetCenterY - playerY;
-        double dz = targetCenterZ - playerZ;
-
-        double absDx = Math.abs(dx);
-        double absDy = Math.abs(dy);
-        double absDz = Math.abs(dz);
-
-        if (absDy >= absDx && absDy >= absDz) {
-            return dy >= 0 ? "down" : "up";
-        } else if (absDx >= absDy && absDx >= absDz) {
-            return dx >= 0 ? "west" : "east";
-        } else {
-            return dz >= 0 ? "north" : "south";
-        }
+        if (ay >= ax && ay >= az) return dy >= 0 ? "down" : "up";
+        if (ax >= ay && ax >= az) return dx >= 0 ? "west" : "east";
+        return dz >= 0 ? "north" : "south";
     }
 
     @Override
     public Rotation calculateLookAngle(int worldX, int worldY, int worldZ, String face) {
-        double playerX = CACHE.getPlayerCache().getX();
-        double playerY = CACHE.getPlayerCache().getY();
-        double playerZ = CACHE.getPlayerCache().getZ();
+        double px = CACHE.getPlayerCache().getX();
+        double py = CACHE.getPlayerCache().getY();
+        double pz = CACHE.getPlayerCache().getZ();
+        double eyeY = py + 1.62;
 
-        // Target: center of the specified face
-        double targetX = worldX + 0.5;
-        double targetY = worldY + 0.5;
-        double targetZ = worldZ + 0.5;
+        double tx = worldX + 0.5;
+        double ty = worldY + 0.5;
+        double tz = worldZ + 0.5;
 
         switch (face) {
-            case "up":
-                targetY = worldY + 1.0;
-                break;
-            case "down":
-                targetY = worldY;
-                break;
-            case "north":
-                targetZ = worldZ;
-                break;
-            case "south":
-                targetZ = worldZ + 1.0;
-                break;
-            case "west":
-                targetX = worldX;
-                break;
-            case "east":
-                targetX = worldX + 1.0;
-                break;
+            case "up":    ty = worldY + 1.0; break;
+            case "down":  ty = worldY;       break;
+            case "north": tz = worldZ;       break;
+            case "south": tz = worldZ + 1.0; break;
+            case "west":  tx = worldX;       break;
+            case "east":  tx = worldX + 1.0; break;
         }
 
-        double eyeY = playerY + 1.62;
-
-        double dx = targetX - playerX;
-        double dy = targetY - eyeY;
-        double dz = targetZ - playerZ;
-
-        double horizontalDist = Math.sqrt(dx * dx + dz * dz);
+        double dx = tx - px;
+        double dy = ty - eyeY;
+        double dz = tz - pz;
+        double hDist = Math.sqrt(dx * dx + dz * dz);
 
         float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-        float pitch = (float) -Math.toDegrees(Math.atan2(dy, horizontalDist));
+        float pitch = (float) -Math.toDegrees(Math.atan2(dy, hDist));
 
         return new Rotation(yaw, pitch);
     }
 
     // ======================================================================
-    // Internal
+    // Internal pipeline
     // ======================================================================
 
-    /**
-     * Shared placement pipeline for both blocks and carpets.
-     *
-     * @param worldX   world X of the supporting block to click
-     * @param worldY   world Y of the supporting block (carpet goes on Y+1)
-     * @param worldZ   world Z of the supporting block to click
-     * @param material the material to place
-     * @param isCarpet true for carpet placement (click top face, place at Y+1)
-     */
     private PlacementResult placeInternal(int worldX, int worldY, int worldZ,
                                            Material material, boolean isCarpet) {
-        // --- Step 1: Pre-checks ---
-        PlacementResult preCheck = runPreChecks(worldX, worldY, worldZ, material, isCarpet);
-        if (preCheck != null) return preCheck;
-
-        // --- Step 2: Select hotbar slot ---
-        int slot = inventoryManager.reserveSlot(material);
-        if (slot < 0) {
-            logger.warn(TAG, "No slot available for %s", material.getDisplayName());
-            return PlacementResult.NO_MATERIAL;
-        }
-
-        // --- Determine placement target ---
-        int clickX = worldX;
-        int clickY = worldY;
-        int clickZ = worldZ;
-        int placedY = isCarpet ? worldY + 1 : worldY;
-        String face = isCarpet ? "up" : getPlacementFace(worldX, placedY, worldZ);
-        Rotation rotation = calculateLookAngle(clickX, clickY, clickZ, face);
-
-        // --- Step 3: Retry loop ---
-        for (int attempt = 0; attempt <= maxRetries; attempt++) {
-            // Step 3a: Submit rotation
-            boolean rotationAccepted = submitRotation(rotation);
-            if (!rotationAccepted) {
-                logger.debug(TAG, "Rotation rejected by InputManager");
-                inventoryManager.releaseSlot(slot);
-                return PlacementResult.FAILED_RETRIES_EXHAUSTED;
-            }
-
-            // Step 3b: Send placement packet
-            sendPlacementPacket(clickX, clickY, clickZ, face);
-
-            // Step 3c: Verify (optional)
-            if (!verifyPlacement(clickX, placedY, clickZ, material)) {
-                if (attempt < maxRetries) {
-                    logger.debug(TAG, "Placement verify failed, retry %d/%d", attempt + 1, maxRetries);
-                    continue;
-                }
-                logger.warn(TAG, "Failed to place %s at (%d, %d, %d) after %d attempts",
-                    material.getDisplayName(), worldX, placedY, worldZ, maxRetries + 1);
-                inventoryManager.releaseSlot(slot);
-                return PlacementResult.FAILED_RETRIES_EXHAUSTED;
-            }
-
-            // Success
-            logger.debug(TAG, "Placed %s at (%d, %d, %d)", material.getDisplayName(), worldX, placedY, worldZ);
-            inventoryManager.releaseSlot(slot);
-            return PlacementResult.SUCCESS;
-        }
-
-        inventoryManager.releaseSlot(slot);
-        return PlacementResult.FAILED_RETRIES_EXHAUSTED;
-    }
-
-    /**
-     * Runs all pre-placement checks.
-     *
-     * @return a failing PlacementResult if checks fail, or null if placement can proceed
-     */
-    private PlacementResult runPreChecks(int worldX, int worldY, int worldZ,
-                                          Material material, boolean isCarpet) {
+        // --- Pre-checks ---
         int checkY = isCarpet ? worldY + 1 : worldY;
 
-        // Reach check
-        double playerX = CACHE.getPlayerCache().getX();
-        double playerY = CACHE.getPlayerCache().getY();
-        double playerZ = CACHE.getPlayerCache().getZ();
-        double eyeY = playerY + 1.62;
-
-        double dx = (worldX + 0.5) - playerX;
-        double dy = (checkY + 0.5) - eyeY;
-        double dz = (worldZ + 0.5) - playerZ;
-        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-        if (dist > MAX_REACH) {
-            logger.debug(TAG, "Target (%d, %d, %d) out of reach (%.1f blocks)", worldX, checkY, worldZ, dist);
+        if (!isInReach(worldX, checkY, worldZ)) {
+            logger.debug(TAG, "Target (%d,%d,%d) out of reach", worldX, checkY, worldZ);
             return PlacementResult.OUT_OF_REACH;
         }
-
-        // Obstruction check
         if (worldScanner.isObstructed(worldX, checkY, worldZ)) {
-            logger.debug(TAG, "Position (%d, %d, %d) is obstructed", worldX, checkY, worldZ);
+            logger.debug(TAG, "Position (%d,%d,%d) obstructed", worldX, checkY, worldZ);
             return PlacementResult.OBSTRUCTED;
         }
-
-        // Material check
         if (!inventoryManager.hasMaterial(material)) {
             logger.debug(TAG, "Missing material: %s", material.getDisplayName());
             return PlacementResult.NO_MATERIAL;
         }
 
-        return null; // all clear
+        // --- Slot selection ---
+        int slot = inventoryManager.reserveSlot(material);
+        if (slot < 0) {
+            logger.warn(TAG, "No hotbar slot for %s", material.getDisplayName());
+            return PlacementResult.NO_MATERIAL;
+        }
+
+        // --- Face and rotation ---
+        String face = isCarpet ? "up" : getPlacementFace(worldX, worldY, worldZ);
+        Rotation rotation = calculateLookAngle(
+            worldX, worldY, worldZ, face);
+
+        // --- Rotate ---
+        if (!submitRotation(rotation)) {
+            logger.debug(TAG, "Rotation rejected by InputManager");
+            inventoryManager.releaseSlot(slot);
+            return PlacementResult.FAILED_RETRIES_EXHAUSTED;
+        }
+
+        // --- Place ---
+        sendPlacementPacket(worldX, worldY, worldZ, face);
+
+        logger.debug(TAG, "Placed %s at (%d,%d,%d) face=%s",
+            material.getDisplayName(), worldX, isCarpet ? worldY + 1 : worldY, worldZ, face);
+
+        inventoryManager.releaseSlot(slot);
+        return PlacementResult.SUCCESS;
     }
 
-    /**
-     * Submits a rotation-only InputRequest to Zenith's InputManager.
-     *
-     * @return true if the rotation was accepted, false if rejected
-     */
+    private boolean isInReach(int worldX, int worldY, int worldZ) {
+        double px = CACHE.getPlayerCache().getX();
+        double py = CACHE.getPlayerCache().getY();
+        double pz = CACHE.getPlayerCache().getZ();
+        double eyeY = py + 1.62;
+
+        double dx = (worldX + 0.5) - px;
+        double dy = (worldY + 0.5) - eyeY;
+        double dz = (worldZ + 0.5) - pz;
+
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) <= MAX_REACH;
+    }
+
     private boolean submitRotation(Rotation rotation) {
         InputRequest request = InputRequest.builder()
             .owner(this)
@@ -301,61 +203,28 @@ public class LoomPlacementEngine implements PlacementEngine {
             .priority(PLACEMENT_PRIORITY)
             .build();
 
-        InputRequestFuture future = INPUTS.submit(request);
-
-        if (future == InputRequestFuture.rejected) {
-            return false;
-        }
-
-        return true;
+        return INPUTS.submit(request) != InputRequestFuture.rejected;
     }
 
-    /**
-     * Sends the placement packet directly to the server.
-     */
     private void sendPlacementPacket(int x, int y, int z, String face) {
-        org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction mcplFace =
-            faceToMcpl(face);
-
-        var packet = new ServerboundUseItemOnPacket(
-            x, y, z,
-            mcplFace,
-            Hand.MAIN_HAND,
-            0.5f, 0.5f, 0.5f,
-            false,
-            false,
-            0
-        );
-
-        var clientSession = Proxy.getInstance().getClient();
-        if (clientSession != null && clientSession.isConnected()) {
-            clientSession.send(packet);
-            clientSession.send(new ServerboundSwingPacket(Hand.MAIN_HAND));
-        }
-    }
-
-    /**
-     * Verifies that a placement succeeded by checking the world state.
-     */
-    private boolean verifyPlacement(int worldX, int worldY, int worldZ, Material material) {
-        // Verification is optional; if disabled, assume success
-        // TODO: Read from config (verifyPlacements)
-        return true;
-    }
-
-    /**
-     * Converts a Loom face string to MCPL Direction.
-     */
-    private static org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction
-            faceToMcpl(String face) {
-        return switch (face) {
-            case "up" -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.UP;
-            case "down" -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.DOWN;
+        var mcplDir = switch (face) {
+            case "up"    -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.UP;
+            case "down"  -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.DOWN;
             case "north" -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.NORTH;
             case "south" -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.SOUTH;
-            case "west" -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.WEST;
-            case "east" -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.EAST;
-            default -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.UP;
+            case "west"  -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.WEST;
+            case "east"  -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.EAST;
+            default       -> org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction.UP;
         };
+
+        var packet = new ServerboundUseItemOnPacket(
+            x, y, z, mcplDir, Hand.MAIN_HAND,
+            0.5f, 0.5f, 0.5f, false, false, 0);
+
+        var session = Proxy.getInstance().getClient();
+        if (session != null && session.isConnected()) {
+            session.send(packet);
+            session.send(new ServerboundSwingPacket(Hand.MAIN_HAND));
+        }
     }
 }
