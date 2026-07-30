@@ -97,8 +97,6 @@ public class LoomPlugin implements ZenithProxyPlugin {
         // --- Step 4: Create mid-level services ---
         worldScanner = new LoomWorldScanner(schematicManager, loomLogger);
 
-        placementEngine = new LoomPlacementEngine(CONFIG.maxPlacementRetries);
-
         navigator = new LoomNavigator(
             CONFIG.storageX, CONFIG.storageY, CONFIG.storageZ,
             CONFIG.buildOriginX, CONFIG.buildOriginZ,
@@ -106,6 +104,13 @@ public class LoomPlugin implements ZenithProxyPlugin {
         );
 
         inventoryManager = new LoomInventoryManagerImpl(CONFIG.restockThreshold);
+
+        placementEngine = new LoomPlacementEngine(
+            worldScanner,
+            inventoryManager,
+            loomLogger,
+            CONFIG.maxPlacementRetries
+        );
         chestRestocker = new LoomChestRestocker();
 
         // --- Step 5: Create orchestration services ---
