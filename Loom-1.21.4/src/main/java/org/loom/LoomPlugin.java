@@ -94,9 +94,9 @@ public class LoomPlugin implements ZenithProxyPlugin {
         ProgressStore progressStore = new ProgressStore();
         progressTracker = new LoomProgressTracker(progressStore);
 
-        worldScanner = new LoomWorldScanner();
-
         // --- Step 4: Create mid-level services ---
+        worldScanner = new LoomWorldScanner(schematicManager, loomLogger);
+
         placementEngine = new LoomPlacementEngine(CONFIG.maxPlacementRetries);
 
         navigator = new LoomNavigator(

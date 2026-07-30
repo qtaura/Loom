@@ -118,13 +118,20 @@ public class LoomWorldScanner implements WorldScanner {
         for (int sx = 0; sx < width; sx++) {
             for (int sy = 0; sy < height; sy++) {
                 int worldX = originX + sx;
-                int worldY = originY; // map art is 2D at a single Y layer
+                int worldY = originY;
                 int worldZ = originZ + sy;
 
                 String expected = schematicManager.getBlockAt(schematicId, sx, sy);
                 if ("minecraft:air".equals(expected)) continue;
 
-                BlockState actual = getBlockAt(worldX, worldY, worldZ);
+                // Use scan result as a cache first, fall back to direct chunk read
+                BlockState actual = scanResult.get(worldX, worldY, worldZ);
+                if (actual == BlockState.AIR) {
+                    // Position wasn't in the scan result (was air or chunk not loaded).
+                    // Double-check via direct chunk read in case the scan was incomplete.
+                    actual = getBlockAt(worldX, worldY, worldZ);
+                }
+
                 if (!actual.equalsMaterial(expected)) {
                     discrepancies.add(new Discrepancy(
                         worldX, worldY, worldZ,
