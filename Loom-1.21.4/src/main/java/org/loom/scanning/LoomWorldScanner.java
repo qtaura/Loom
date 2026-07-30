@@ -2,7 +2,6 @@ package org.loom.scanning;
 
 import com.zenith.cache.data.chunk.Chunk;
 import com.zenith.mc.block.Block;
-import com.zenith.mc.block.BlockDataManager;
 import com.zenith.mc.block.FluidState;
 import org.loom.log.LoomLogger;
 import org.loom.schematic.SchematicManager;
