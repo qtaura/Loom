@@ -36,13 +36,14 @@ public interface WorldScanner {
      * Compares a scan result against a schematic and returns a list of
      * positions where the world doesn't match the expected blocks.
      *
-     * @param scanResult the scan to compare
-     * @param originX    the schematic's world X offset
-     * @param originY    the schematic's world Y offset
-     * @param originZ    the schematic's world Z offset
+     * @param schematicId the registered schematic to compare against
+     * @param scanResult  the scan to compare
+     * @param originX     the schematic's world X offset
+     * @param originY     the schematic's world Y offset
+     * @param originZ     the schematic's world Z offset
      * @return list of discrepancies, empty if all blocks match
      */
-    List<Discrepancy> compareToSchematic(ScanResult scanResult, int originX, int originY, int originZ);
+    List<Discrepancy> compareToSchematic(String schematicId, ScanResult scanResult, int originX, int originY, int originZ);
 
     /**
      * Checks if a position is obstructed (entity, fluid, non-replaceable block).
