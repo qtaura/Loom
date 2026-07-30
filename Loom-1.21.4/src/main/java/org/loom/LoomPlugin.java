@@ -101,7 +101,8 @@ public class LoomPlugin implements ZenithProxyPlugin {
 
         navigator = new LoomNavigator(
             CONFIG.storageX, CONFIG.storageY, CONFIG.storageZ,
-            CONFIG.buildOriginX, CONFIG.buildOriginZ
+            CONFIG.buildOriginX, CONFIG.buildOriginZ,
+            loomLogger
         );
 
         inventoryManager = new LoomInventoryManagerImpl(CONFIG.restockThreshold);

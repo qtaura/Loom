@@ -63,4 +63,18 @@ public interface Navigator {
      * Returns the current path target as (x, z), or (-1, -1) if idle.
      */
     int[] getCurrentPathTarget();
+
+    /**
+     * Returns the result of the last completed navigation.
+     *
+     * <p>Returns {@code null} if no navigation has been attempted since the
+     * Navigator was created or since the last cancellation.
+     */
+    NavigationResult getLastNavigationResult();
+
+    /**
+     * Returns the last successfully reached destination as (x, z),
+     * or (-1, -1) if no destination has been reached yet.
+     */
+    int[] getLastDestination();
 }
