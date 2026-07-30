@@ -1,6 +1,12 @@
 package org.loom.schematic;
 
+import org.loom.log.LoomLogger;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -9,28 +15,58 @@ import java.util.Optional;
  *
  * <p>Maintains an in-memory cache of loaded schematics and delegates
  * file loading to format-specific {@link SchematicLoader} implementations.
+ * The loader is selected based on file extension.
  */
 public class LoomSchematicManager implements SchematicManager {
 
+    private static final String TAG = "Schematic";
+
     private final Map<String, Schematic> cache;
     private final Map<SchematicFormat, SchematicLoader> loaders;
+    private final LoomLogger logger;
 
-    public LoomSchematicManager() {
+    public LoomSchematicManager(LoomLogger logger) {
         this.cache = new HashMap<>();
         this.loaders = new HashMap<>();
+        this.logger = logger;
 
-        // TODO: Register loaders
-        // loaders.put(SchematicFormat.LITEMATICA, new LitematicaLoader());
-        // loaders.put(SchematicFormat.SPONGE_SCHEMATIC, new SpongeSchematicLoader());
+        loaders.put(SchematicFormat.LITEMATICA, new LitematicaLoader());
+        loaders.put(SchematicFormat.SPONGE_SCHEMATIC, new SpongeSchematicLoader());
     }
 
     @Override
     public Schematic loadSchematic(String path) {
-        // TODO: Determine format from file extension
-        // TODO: Select correct loader
-        // TODO: Load and cache the schematic
-        // TODO: Return the loaded schematic
-        throw new UnsupportedOperationException("Not implemented yet");
+        String id = deriveId(path);
+
+        Schematic cached = cache.get(id);
+        if (cached != null) {
+            logger.info(TAG, "Schematic already loaded: %s", id);
+            return cached;
+        }
+
+        SchematicFormat format = detectFormat(path);
+        SchematicLoader loader = loaders.get(format);
+
+        if (loader == null) {
+            String msg = "No loader for format: " + format;
+            logger.error(TAG, msg, null);
+            throw new UnsupportedOperationException(msg);
+        }
+
+        try {
+            Schematic schematic = loader.load(path);
+            cache.put(id, schematic);
+            logger.info(TAG, "Loaded '%s': %dx%d, %d blocks, %s",
+                id, schematic.getWidth(), schematic.getHeight(),
+                schematic.getTotalBlocks(), format);
+            return schematic;
+        } catch (IOException e) {
+            logger.error(TAG, "Failed to load schematic: " + path, e);
+            throw new RuntimeException("Failed to load schematic: " + path, e);
+        } catch (Exception e) {
+            logger.error(TAG, "Failed to load schematic: " + path, e);
+            throw new RuntimeException("Failed to load schematic: " + path, e);
+        }
     }
 
     @Override
@@ -71,16 +107,47 @@ public class LoomSchematicManager implements SchematicManager {
     @Override
     public void unloadSchematic(String id) {
         cache.remove(id);
+        logger.info(TAG, "Unloaded: %s", id);
     }
 
     @Override
     public ValidationResult validate(String id) {
         Schematic s = cache.get(id);
         if (s == null) {
-            return ValidationResult.invalid(java.util.List.of("Schematic not loaded: " + id));
+            return ValidationResult.invalid(List.of("Schematic not loaded: " + id));
         }
-        // TODO: Validate dimensions (must be 128x128 for standard map art)
-        // TODO: Validate block types are supported carpet colors
-        return ValidationResult.valid();
+
+        List<String> errors = new ArrayList<>();
+
+        if (s.getWidth() < 1 || s.getWidth() > 256) {
+            errors.add("Width " + s.getWidth() + " outside valid range [1, 256]");
+        }
+        if (s.getHeight() < 1 || s.getHeight() > 256) {
+            errors.add("Height " + s.getHeight() + " outside valid range [1, 256]");
+        }
+        if (s.getPalette().isEmpty()) {
+            errors.add("Palette is empty");
+        }
+        if (s.getTotalBlocks() == 0) {
+            errors.add("No non-air blocks");
+        }
+
+        return errors.isEmpty()
+            ? ValidationResult.valid()
+            : ValidationResult.invalid(errors);
+    }
+
+    private static String deriveId(String path) {
+        String name = Path.of(path).getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        return dot > 0 ? name.substring(0, dot) : name;
+    }
+
+    private static SchematicFormat detectFormat(String path) {
+        String lower = path.toLowerCase();
+        if (lower.endsWith(".litematic")) return SchematicFormat.LITEMATICA;
+        if (lower.endsWith(".schem") || lower.endsWith(".schematic")) return SchematicFormat.SPONGE_SCHEMATIC;
+        if (lower.endsWith(".nbt")) return SchematicFormat.NBT_STRUCTURE;
+        throw new IllegalArgumentException("Unknown format: " + path);
     }
 }

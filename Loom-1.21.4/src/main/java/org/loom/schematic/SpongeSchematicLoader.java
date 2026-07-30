@@ -2,6 +2,10 @@ package org.loom.schematic;
 
 /**
  * Loads Sponge schematic (.schem) files.
+ *
+ * <p>Not yet implemented. Sponge schematics use a different NBT structure
+ * (Schematic format v2) with {@code Width/Height/Length}, {@code Palette},
+ * and {@code BlockData} byte arrays encoding varint palette indices.
  */
 public class SpongeSchematicLoader implements SchematicLoader {
 
@@ -12,10 +16,7 @@ public class SpongeSchematicLoader implements SchematicLoader {
 
     @Override
     public Schematic load(String path) throws Exception {
-        // TODO: Open the .schem file as NBT
-        // TODO: Parse dimensions and palette
-        // TODO: Build materials[][] grid
-        // TODO: Return new Schematic(...)
-        throw new UnsupportedOperationException("Not implemented yet");
+        throw new UnsupportedOperationException(
+            "Sponge schematic (.schem) format is not yet supported. Use .litematic format instead.");
     }
 }
