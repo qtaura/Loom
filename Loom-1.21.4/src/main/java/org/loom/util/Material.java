@@ -1,5 +1,8 @@
 package org.loom.util;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Represents a material (block or item) used in map art construction.
  *
@@ -8,23 +11,25 @@ package org.loom.util;
  */
 public class Material {
 
+    private static final Map<String, Material> REGISTRY = new HashMap<>();
+
     // Common carpet colors for map art
-    public static final Material WHITE_CARPET = new Material("minecraft:white_carpet", "White Carpet", true);
-    public static final Material ORANGE_CARPET = new Material("minecraft:orange_carpet", "Orange Carpet", true);
-    public static final Material MAGENTA_CARPET = new Material("minecraft:magenta_carpet", "Magenta Carpet", true);
-    public static final Material LIGHT_BLUE_CARPET = new Material("minecraft:light_blue_carpet", "Light Blue Carpet", true);
-    public static final Material YELLOW_CARPET = new Material("minecraft:yellow_carpet", "Yellow Carpet", true);
-    public static final Material LIME_CARPET = new Material("minecraft:lime_carpet", "Lime Carpet", true);
-    public static final Material PINK_CARPET = new Material("minecraft:pink_carpet", "Pink Carpet", true);
-    public static final Material GRAY_CARPET = new Material("minecraft:gray_carpet", "Gray Carpet", true);
-    public static final Material LIGHT_GRAY_CARPET = new Material("minecraft:light_gray_carpet", "Light Gray Carpet", true);
-    public static final Material CYAN_CARPET = new Material("minecraft:cyan_carpet", "Cyan Carpet", true);
-    public static final Material PURPLE_CARPET = new Material("minecraft:purple_carpet", "Purple Carpet", true);
-    public static final Material BLUE_CARPET = new Material("minecraft:blue_carpet", "Blue Carpet", true);
-    public static final Material BROWN_CARPET = new Material("minecraft:brown_carpet", "Brown Carpet", true);
-    public static final Material GREEN_CARPET = new Material("minecraft:green_carpet", "Green Carpet", true);
-    public static final Material RED_CARPET = new Material("minecraft:red_carpet", "Red Carpet", true);
-    public static final Material BLACK_CARPET = new Material("minecraft:black_carpet", "Black Carpet", true);
+    public static final Material WHITE_CARPET      = register("minecraft:white_carpet",      "White Carpet",      true);
+    public static final Material ORANGE_CARPET     = register("minecraft:orange_carpet",     "Orange Carpet",     true);
+    public static final Material MAGENTA_CARPET    = register("minecraft:magenta_carpet",    "Magenta Carpet",    true);
+    public static final Material LIGHT_BLUE_CARPET = register("minecraft:light_blue_carpet", "Light Blue Carpet", true);
+    public static final Material YELLOW_CARPET     = register("minecraft:yellow_carpet",     "Yellow Carpet",     true);
+    public static final Material LIME_CARPET       = register("minecraft:lime_carpet",       "Lime Carpet",       true);
+    public static final Material PINK_CARPET       = register("minecraft:pink_carpet",       "Pink Carpet",       true);
+    public static final Material GRAY_CARPET       = register("minecraft:gray_carpet",       "Gray Carpet",       true);
+    public static final Material LIGHT_GRAY_CARPET = register("minecraft:light_gray_carpet", "Light Gray Carpet", true);
+    public static final Material CYAN_CARPET       = register("minecraft:cyan_carpet",       "Cyan Carpet",       true);
+    public static final Material PURPLE_CARPET     = register("minecraft:purple_carpet",     "Purple Carpet",     true);
+    public static final Material BLUE_CARPET       = register("minecraft:blue_carpet",       "Blue Carpet",       true);
+    public static final Material BROWN_CARPET      = register("minecraft:brown_carpet",      "Brown Carpet",      true);
+    public static final Material GREEN_CARPET      = register("minecraft:green_carpet",      "Green Carpet",      true);
+    public static final Material RED_CARPET        = register("minecraft:red_carpet",        "Red Carpet",        true);
+    public static final Material BLACK_CARPET      = register("minecraft:black_carpet",      "Black Carpet",      true);
 
     private final String identifier;
     private final String displayName;
@@ -34,6 +39,12 @@ public class Material {
         this.identifier = identifier;
         this.displayName = displayName;
         this.isCarpet = isCarpet;
+    }
+
+    private static Material register(String identifier, String displayName, boolean isCarpet) {
+        Material m = new Material(identifier, displayName, isCarpet);
+        REGISTRY.put(identifier, m);
+        return m;
     }
 
     public String getIdentifier() { return identifier; }
@@ -47,9 +58,7 @@ public class Material {
      * @return the matching Material, or null if unknown
      */
     public static Material fromIdentifier(String identifier) {
-        // TODO: Maintain a registry map for lookup
-        // TODO: Support all 16 carpet colors + base blocks
-        return null;
+        return REGISTRY.get(identifier);
     }
 
     @Override
