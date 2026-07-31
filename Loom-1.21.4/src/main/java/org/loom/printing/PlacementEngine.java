@@ -66,4 +66,21 @@ public interface PlacementEngine {
      * @return the required rotation
      */
     Rotation calculateLookAngle(int worldX, int worldY, int worldZ, String face);
+
+    /**
+     * Breaks the block at the given world position.
+     *
+     * <p>This is a stateful, multi-tick operation. Call once per tick until
+     * the result is {@link BreakResult#SUCCESS}, {@link BreakResult#FAILED},
+     * or {@link BreakResult#ALREADY_AIR}.
+     *
+     * <p>Uses Zenith's {@code BARITONE.breakBlock()} for the actual breaking
+     * and {@code WorldScanner} for post-break verification.
+     *
+     * @param worldX world X
+     * @param worldY world Y
+     * @param worldZ world Z
+     * @return the current state of the break operation
+     */
+    BreakResult breakBlock(int worldX, int worldY, int worldZ);
 }
