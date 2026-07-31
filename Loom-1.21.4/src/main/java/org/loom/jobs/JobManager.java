@@ -25,6 +25,16 @@ public interface JobManager {
     Job createJob(String schematicId, int originX, int originY, int originZ);
 
     /**
+     * Returns a job by its ID.
+     */
+    Optional<Job> getJob(String jobId);
+
+    /**
+     * Returns all jobs, regardless of state.
+     */
+    List<Job> getAllJobs();
+
+    /**
      * Returns the currently active job, if one exists.
      */
     Optional<Job> getActiveJob();
@@ -35,11 +45,41 @@ public interface JobManager {
     List<Job> getQueuedJobs();
 
     /**
+     * Marks a job as active (running).
+     */
+    void startJob(String jobId);
+
+    /**
+     * Pauses an active job.
+     */
+    void pauseJob(String jobId);
+
+    /**
+     * Resumes a paused job.
+     */
+    void resumeJob(String jobId);
+
+    /**
+     * Marks a job as completed.
+     */
+    void completeJob(String jobId);
+
+    /**
+     * Marks a job as failed with a reason.
+     */
+    void failJob(String jobId, String reason);
+
+    /**
      * Cancels a job by its ID.
      *
      * @param jobId the job to cancel
      */
     void cancelJob(String jobId);
+
+    /**
+     * Deletes a job and its progress data.
+     */
+    void deleteJob(String jobId);
 
     /**
      * Moves a job to a new position in the queue.

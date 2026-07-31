@@ -17,6 +17,9 @@ public enum JobState {
     /** Job completed successfully. */
     COMPLETED,
 
+    /** Job failed due to an unrecoverable error. */
+    FAILED,
+
     /** Job was cancelled by the user. */
     CANCELLED
 }
