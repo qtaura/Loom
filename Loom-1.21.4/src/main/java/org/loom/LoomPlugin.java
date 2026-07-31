@@ -27,6 +27,7 @@ import org.loom.printing.RowMajorStrategy;
 import org.loom.recovery.LoomRecoverySystem;
 import org.loom.recovery.RecoverySystem;
 import org.loom.repair.LoomErrorRepair;
+import org.loom.repair.LoomResetSystem;
 import org.loom.scanning.LoomWorldScanner;
 import org.loom.scanning.WorldScanner;
 import org.loom.scheduling.LoomTaskScheduler;
@@ -77,6 +78,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
     static LoomInventoryManager inventoryManager;
     static ChestRestocker chestRestocker;
     static LoomErrorRepair errorRepair;
+    static LoomResetSystem resetSystem;
     static RecoverySystem recoverySystem;
     static WorldScanner worldScanner;
     static LoomModule loomModule;
@@ -128,6 +130,13 @@ public class LoomPlugin implements ZenithProxyPlugin {
         errorRepair = new LoomErrorRepair(
             worldScanner,
             schematicManager,
+            placementEngine,
+            progressTracker,
+            loomLogger
+        );
+
+        resetSystem = new LoomResetSystem(
+            worldScanner,
             placementEngine,
             progressTracker,
             loomLogger
