@@ -132,7 +132,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
 
         taskScheduler = new LoomTaskScheduler();
 
-        jobManager = new LoomJobManager();
+        jobManager = new LoomJobManager(schematicManager, progressTracker, loomLogger);
 
         recoverySystem = new LoomRecoverySystem(
             CONFIG.maxRecoveryAttempts,
