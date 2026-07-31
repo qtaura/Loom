@@ -136,9 +136,8 @@ public class LoomPlugin implements ZenithProxyPlugin {
         );
 
         resetSystem = new LoomResetSystem(
+            navigator,
             worldScanner,
-            placementEngine,
-            progressTracker,
             loomLogger
         );
 
