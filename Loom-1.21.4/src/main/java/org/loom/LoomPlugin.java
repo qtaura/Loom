@@ -4,6 +4,7 @@ import com.zenith.plugin.api.Plugin;
 import com.zenith.plugin.api.PluginAPI;
 import com.zenith.plugin.api.ZenithProxyPlugin;
 import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
+import org.loom.batch.BatchOrchestrator;
 import org.loom.command.BuildCommand;
 import org.loom.command.ConfigCommand;
 import org.loom.command.LoomCommand;
@@ -83,6 +84,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
     static RecoverySystem recoverySystem;
     static WorldScanner worldScanner;
     static LoomModule loomModule;
+    public static BatchOrchestrator batchOrchestrator;
 
     @Override
     public void onLoad(PluginAPI pluginAPI) {
@@ -161,6 +163,12 @@ public class LoomPlugin implements ZenithProxyPlugin {
         taskScheduler = new LoomTaskScheduler(loomLogger);
 
         jobManager = new LoomJobManager(schematicManager, progressTracker, loomLogger);
+
+        batchOrchestrator = new BatchOrchestrator(
+            schematicManager, jobManager, taskScheduler,
+            printerController, eventBus, loomLogger,
+            CONFIG.mapFolderPath, CONFIG.moveToFinishedFolder
+        );
 
         recoverySystem = new LoomRecoverySystem(
             navigator,

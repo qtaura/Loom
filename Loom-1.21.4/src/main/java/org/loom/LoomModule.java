@@ -57,7 +57,8 @@ public class LoomModule extends Module {
             Job job = interrupted.get();
             info("Resuming interrupted job: %s", job.getId());
             PrintTask printTask = new PrintTask(job,
-                LoomPlugin.printerController, jobManager, LoomPlugin.eventBus);
+                LoomPlugin.printerController, jobManager, LoomPlugin.eventBus,
+                LoomPlugin.batchOrchestrator);
             taskScheduler.submit(printTask, TaskPriority.NORMAL);
         }
     }

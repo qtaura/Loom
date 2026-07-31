@@ -85,4 +85,17 @@ public class LoomConfig {
 
     /** Whether to emit metric log entries. */
     public boolean metricsEnabled = true;
+
+    // ---------------------------------------
+    // Batch print settings
+    // ---------------------------------------
+
+    /** Path to the folder containing map schematics (.nbt, .litematic). */
+    public String mapFolderPath = "nerv-printer";
+
+    /** Whether to automatically process all files in mapFolderPath sequentially. */
+    public boolean autoBatch = false;
+
+    /** Whether to move completed schematic files to _finished_maps/. */
+    public boolean moveToFinishedFolder = true;
 }

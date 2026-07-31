@@ -105,7 +105,8 @@ public class LoomCommand extends Command {
                         return ERROR;
                     }
 
-                    PrintTask task = new PrintTask(job, printerController, jobManager, eventBus);
+                    PrintTask task = new PrintTask(job, printerController, jobManager, eventBus,
+                        org.loom.LoomPlugin.batchOrchestrator);
                     taskScheduler.submit(task, TaskPriority.NORMAL);
 
                     c.getSource().getEmbed()
@@ -139,7 +140,8 @@ public class LoomCommand extends Command {
                     return ERROR;
                 }
                 Job job = activeJob.get();
-                PrintTask task = new PrintTask(job, printerController, jobManager, eventBus);
+                PrintTask task = new PrintTask(job, printerController, jobManager, eventBus,
+                    org.loom.LoomPlugin.batchOrchestrator);
                 taskScheduler.submit(task, TaskPriority.NORMAL);
                 c.getSource().getEmbed()
                     .title("Build resumed")
