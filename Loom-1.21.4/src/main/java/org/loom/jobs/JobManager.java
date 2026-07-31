@@ -40,6 +40,14 @@ public interface JobManager {
     Optional<Job> getActiveJob();
 
     /**
+     * Returns a job that was active when the proxy last shut down.
+     *
+     * <p>These jobs were saved with ACTIVE state and converted to PAUSED
+     * during {@link #loadAllJobs()}. Call this at startup to resume.
+     */
+    Optional<Job> getInterruptedJob();
+
+    /**
      * Returns all queued jobs in priority order.
      */
     List<Job> getQueuedJobs();

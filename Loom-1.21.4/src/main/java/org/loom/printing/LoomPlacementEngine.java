@@ -8,10 +8,10 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.Serv
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.loom.inventory.LoomInventoryManager;
 import org.loom.log.LoomLogger;
+import org.loom.navigation.Navigator;
 import org.loom.scanning.WorldScanner;
 import org.loom.util.Material;
 
-import static com.zenith.Globals.BARITONE;
 import static com.zenith.Globals.CACHE;
 import static com.zenith.Globals.INPUTS;
 
@@ -49,6 +49,7 @@ public class LoomPlacementEngine implements PlacementEngine {
     private final WorldScanner worldScanner;
     private final LoomInventoryManager inventoryManager;
     private final LoomLogger logger;
+    private final Navigator navigator;
 
     // --- Break state (one active break at a time) ---
     private int breakTargetX = -1;
@@ -57,10 +58,12 @@ public class LoomPlacementEngine implements PlacementEngine {
 
     public LoomPlacementEngine(WorldScanner worldScanner,
                                LoomInventoryManager inventoryManager,
-                               LoomLogger logger) {
+                               LoomLogger logger,
+                               Navigator navigator) {
         this.worldScanner = worldScanner;
         this.inventoryManager = inventoryManager;
         this.logger = logger;
+        this.navigator = navigator;
     }
 
     // ======================================================================
@@ -154,16 +157,16 @@ public class LoomPlacementEngine implements PlacementEngine {
         if (isBreakingDifferent(worldX, worldY, worldZ)) {
             logger.debug(TAG, "Break target changed from (%d,%d,%d) to (%d,%d,%d)",
                 breakTargetX, breakTargetY, breakTargetZ, worldX, worldY, worldZ);
-            BARITONE.stop();
+            navigator.cancel();
             clearBreakState();
         }
 
         // --- Check if breaking in progress ---
         if (breakTargetX == worldX && breakTargetY == worldY && breakTargetZ == worldZ) {
-            if (BARITONE.isActive()) {
+            if (navigator.isBusy()) {
                 return BreakResult.IN_PROGRESS;
             }
-            // BARITONE finished — verify
+            // Navigator finished — verify
             current = worldScanner.getBlockAt(worldX, worldY, worldZ);
             if (current.isAir()) {
                 logger.debug(TAG, "Break confirmed at (%d,%d,%d)", worldX, worldY, worldZ);
@@ -187,7 +190,7 @@ public class LoomPlacementEngine implements PlacementEngine {
         breakTargetY = worldY;
         breakTargetZ = worldZ;
 
-        BARITONE.breakBlock(worldX, worldY, worldZ, true);
+        navigator.breakBlock(worldX, worldY, worldZ);
         logger.debug(TAG, "Started breaking at (%d,%d,%d)", worldX, worldY, worldZ);
         return BreakResult.IN_PROGRESS;
     }

@@ -28,6 +28,7 @@ public class LoomJobManager implements JobManager {
     private final SchematicManager schematicManager;
     private final ProgressTracker progressTracker;
     private final LoomLogger logger;
+    private Job interruptedJob;
 
     public LoomJobManager(SchematicManager schematicManager,
                           ProgressTracker progressTracker,
@@ -73,6 +74,11 @@ public class LoomJobManager implements JobManager {
     @Override
     public Optional<Job> getActiveJob() {
         return jobs.stream().filter(j -> j.getState() == JobState.ACTIVE).findFirst();
+    }
+
+    @Override
+    public Optional<Job> getInterruptedJob() {
+        return Optional.ofNullable(interruptedJob);
     }
 
     @Override
@@ -201,11 +207,11 @@ public class LoomJobManager implements JobManager {
         jobs.addAll(loaded);
 
         // If there's an ACTIVE job from a previous session, it was interrupted.
-        // Set it to PAUSED so the user can manually resume or it will be
-        // auto-resumed by whoever starts the printer.
+        interruptedJob = null;
         for (Job job : jobs) {
             if (job.getState() == JobState.ACTIVE) {
                 job.setState(JobState.PAUSED);
+                interruptedJob = job;
                 store.save(job);
                 logger.info(TAG, "Recovered interrupted job %s (set to PAUSED)", job.getId());
             }
