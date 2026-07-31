@@ -7,6 +7,7 @@ import org.loom.jobs.Job;
 import org.loom.jobs.JobManager;
 import org.loom.recovery.RecoverySystem;
 import org.loom.scheduling.PrintTask;
+import org.loom.scheduling.RecoveryTask;
 import org.loom.scheduling.TaskPriority;
 import org.loom.scheduling.TaskScheduler;
 
@@ -86,8 +87,7 @@ public class LoomModule extends Module {
         if (recoverySystem.isRecovering()) {
             var active = taskScheduler.getActiveTask();
             if (active == null || active.getPriority() != TaskPriority.CRITICAL) {
-                taskScheduler.submit(new org.loom.scheduling.RecoveryTask(
-                    (org.loom.recovery.LoomRecoverySystem) recoverySystem),
+                taskScheduler.submit(new RecoveryTask(recoverySystem),
                     TaskPriority.CRITICAL);
             }
         }
