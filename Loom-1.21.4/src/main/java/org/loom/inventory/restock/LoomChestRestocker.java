@@ -2,7 +2,6 @@ package org.loom.inventory.restock;
 
 import com.zenith.feature.inventory.InventoryActionRequest;
 import com.zenith.feature.inventory.actions.ShiftClick;
-import com.zenith.mc.block.BlockRegistry;
 import org.geysermc.mcprotocollib.protocol.data.game.inventory.ShiftClickItemAction;
 import org.loom.event.RestockCompletedEvent;
 import org.loom.inventory.LoomInventoryManager;
@@ -11,7 +10,6 @@ import org.loom.navigation.NavigationResult;
 import org.loom.navigation.Navigator;
 import org.loom.util.AsyncLoomEventBus;
 
-import static com.zenith.Globals.BARITONE;
 import static com.zenith.Globals.CACHE;
 import static com.zenith.Globals.INVENTORY;
 
@@ -131,7 +129,8 @@ public class LoomChestRestocker implements ChestRestocker {
     public void cancelRestock() {
         phase = Phase.IDLE;
         currentRequest = null;
-        BARITONE.stop();
+        // Cancel navigation if running
+        navigator.cancel();
         logger.info(TAG, "Restock cancelled");
     }
 
@@ -157,19 +156,12 @@ public class LoomChestRestocker implements ChestRestocker {
     }
 
     private void tickOpenChest() {
-        // Use BARITONE to path to and right-click the chest
-        int sx = currentRequest.getStorageX();
-        int sy = currentRequest.getStorageY();
-        int sz = currentRequest.getStorageZ();
-
-        var chest = BlockRegistry.CHEST;
-        if (chest != null) {
-            BARITONE.getTo(chest, true);
-        }
+        navigator.openChest(currentRequest.getStorageX(),
+            currentRequest.getStorageY(), currentRequest.getStorageZ());
 
         openRetries++;
         phase = Phase.WAIT_OPEN;
-        logger.debug(TAG, "Opening chest at (%d,%d,%d), attempt %d", sx, sy, sz, openRetries);
+        logger.debug(TAG, "Opening chest, attempt %d", openRetries);
     }
 
     private void tickWaitOpen() {
@@ -182,8 +174,8 @@ public class LoomChestRestocker implements ChestRestocker {
             return;
         }
 
-        // Check if BARITONE finished but chest didn't open
-        if (!BARITONE.isActive()) {
+        // Check if navigation finished but chest didn't open
+        if (!navigator.isBusy()) {
             if (openRetries < MAX_OPEN_RETRIES) {
                 phase = Phase.OPEN_CHEST;
             } else {

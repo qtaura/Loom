@@ -52,9 +52,9 @@ public class LoomModule extends Module {
 
     @Override
     public void onEnable() {
-        Optional<Job> activeJob = jobManager.getActiveJob();
-        if (activeJob.isPresent()) {
-            Job job = activeJob.get();
+        Optional<Job> interrupted = jobManager.getInterruptedJob();
+        if (interrupted.isPresent()) {
+            Job job = interrupted.get();
             info("Resuming interrupted job: %s", job.getId());
             PrintTask printTask = new PrintTask(job,
                 LoomPlugin.printerController, jobManager, LoomPlugin.eventBus);

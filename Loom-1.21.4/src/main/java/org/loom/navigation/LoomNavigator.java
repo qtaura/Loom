@@ -2,6 +2,7 @@ package org.loom.navigation;
 
 import com.zenith.feature.pathfinder.PathingRequestFuture;
 import com.zenith.feature.pathfinder.goals.GoalXZ;
+import com.zenith.mc.block.BlockRegistry;
 import com.zenith.util.math.MathHelper;
 import org.loom.log.LoomLogger;
 
@@ -290,6 +291,25 @@ public class LoomNavigator implements Navigator {
         targetX = -1;
         targetZ = -1;
         stuckSinceTime = 0;
+    }
+
+    @Override
+    public boolean isBusy() {
+        return BARITONE.isActive();
+    }
+
+    @Override
+    public void breakBlock(int worldX, int worldY, int worldZ) {
+        BARITONE.breakBlock(worldX, worldY, worldZ, true);
+    }
+
+    @Override
+    public void openChest(int x, int y, int z) {
+        var chest = BlockRegistry.CHEST;
+        if (chest != null) {
+            BARITONE.getTo(chest, true);
+            logger.debug(TAG, "Opening chest at (%d,%d,%d)", x, y, z);
+        }
     }
 
     /**

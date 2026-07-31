@@ -113,7 +113,8 @@ public class LoomPlugin implements ZenithProxyPlugin {
         placementEngine = new LoomPlacementEngine(
             worldScanner,
             inventoryManager,
-            loomLogger
+            loomLogger,
+            navigator
         );
         chestRestocker = new LoomChestRestocker(
             navigator,

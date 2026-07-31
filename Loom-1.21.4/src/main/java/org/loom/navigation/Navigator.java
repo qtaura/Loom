@@ -77,4 +77,28 @@ public interface Navigator {
      * or (-1, -1) if no destination has been reached yet.
      */
     int[] getLastDestination();
+
+    /**
+     * Returns true if Baritone is busy with any operation
+     * (navigation, breaking, interacting, etc.).
+     */
+    boolean isBusy();
+
+    /**
+     * Submits a block breaking request to Baritone.
+     *
+     * @param worldX world X of the block to break
+     * @param worldY world Y of the block to break
+     * @param worldZ world Z of the block to break
+     */
+    void breakBlock(int worldX, int worldY, int worldZ);
+
+    /**
+     * Navigates to and interacts with a chest (opens it).
+     *
+     * @param x world X of the chest
+     * @param y world Y of the chest
+     * @param z world Z of the chest
+     */
+    void openChest(int x, int y, int z);
 }
