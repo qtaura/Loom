@@ -1,5 +1,6 @@
 package org.loom.scheduling;
 
+import org.loom.batch.BatchOrchestrator;
 import org.loom.event.*;
 import org.loom.jobs.Job;
 import org.loom.jobs.JobManager;
@@ -15,14 +16,17 @@ public class PrintTask extends Task {
     private final PrinterController printerController;
     private final JobManager jobManager;
     private final AsyncLoomEventBus eventBus;
+    private final BatchOrchestrator batchOrchestrator;
 
     public PrintTask(Job job, PrinterController printerController,
-                      JobManager jobManager, AsyncLoomEventBus eventBus) {
+                      JobManager jobManager, AsyncLoomEventBus eventBus,
+                      BatchOrchestrator batchOrchestrator) {
         super("PrintTask-" + job.getId());
         this.job = job;
         this.printerController = printerController;
         this.jobManager = jobManager;
         this.eventBus = eventBus;
+        this.batchOrchestrator = batchOrchestrator;
     }
 
     public Job getJob() {
@@ -62,6 +66,11 @@ public class PrintTask extends Task {
         printerController.cancel();
         jobManager.completeJob(job.getId());
         eventBus.publish(new PrintCompletedEvent(job.getId(), 0, 0));
+
+        // Trigger next file in batch
+        if (batchOrchestrator != null) {
+            batchOrchestrator.onPrintComplete(job.getId());
+        }
     }
 
     @Override
