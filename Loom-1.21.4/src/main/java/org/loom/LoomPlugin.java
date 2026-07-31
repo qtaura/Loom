@@ -6,6 +6,7 @@ import com.zenith.plugin.api.ZenithProxyPlugin;
 import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
 import org.loom.command.BuildCommand;
 import org.loom.command.ConfigCommand;
+import org.loom.command.LoomCommand;
 import org.loom.command.SchematicCommand;
 import org.loom.command.StatusCommand;
 import org.loom.inventory.LoomInventoryManager;
@@ -165,9 +166,11 @@ public class LoomPlugin implements ZenithProxyPlugin {
         pluginAPI.registerModule(loomModule);
 
         // --- Step 7: Register commands ---
-        pluginAPI.registerCommand(new BuildCommand());
+        pluginAPI.registerCommand(new LoomCommand(
+            jobManager, taskScheduler, printerController,
+            progressTracker, schematicManager
+        ));
         pluginAPI.registerCommand(new SchematicCommand());
-        pluginAPI.registerCommand(new StatusCommand());
         pluginAPI.registerCommand(new ConfigCommand());
 
         LOG.info("Loom loaded.");
