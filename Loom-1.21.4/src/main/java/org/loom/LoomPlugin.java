@@ -96,7 +96,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
         loomLogger = new LoomLogger(LOG);
 
         // --- Step 3: Create leaf services (no dependencies) ---
-        schematicManager = new LoomSchematicManager(loomLogger);
+        schematicManager = new LoomSchematicManager(loomLogger, CONFIG.ignoredBlocks);
 
         ProgressStore progressStore = new ProgressStore();
         progressTracker = new LoomProgressTracker(progressStore, eventBus);

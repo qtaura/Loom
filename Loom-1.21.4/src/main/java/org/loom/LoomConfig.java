@@ -98,4 +98,15 @@ public class LoomConfig {
 
     /** Whether to move completed schematic files to _finished_maps/. */
     public boolean moveToFinishedFolder = true;
+
+    // ---------------------------------------
+    // Schematic filter settings
+    // ---------------------------------------
+
+    /**
+     * Block types that will not be placed. Useful for printing semi-transparent
+     * maps. Each entry is a Minecraft block/item identifier (e.g. "minecraft:white_carpet").
+     * Matching nerv's ignored-blocks setting.
+     */
+    public java.util.List<String> ignoredBlocks = new java.util.ArrayList<>();
 }

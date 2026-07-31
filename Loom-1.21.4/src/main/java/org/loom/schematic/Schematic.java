@@ -47,6 +47,16 @@ public class Schematic {
     }
 
     /**
+     * Replaces a block in the materials grid with a new material.
+     * Used by the schematic manager for post-load filtering (e.g. ignored blocks).
+     */
+    void replaceBlock(int x, int y, String material) {
+        if (x >= 0 && x < width && y >= 0 && y < height) {
+            materials[y][x] = material;
+        }
+    }
+
+    /**
      * Returns the full palette for this schematic.
      */
     public Map<Integer, SchematicPalette> getPalette() {
