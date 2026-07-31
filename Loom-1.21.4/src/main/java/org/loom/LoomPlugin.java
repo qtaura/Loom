@@ -21,6 +21,8 @@ import org.loom.printing.LoomPlacementEngine;
 import org.loom.printing.LoomPrinterController;
 import org.loom.printing.PlacementEngine;
 import org.loom.printing.PrinterController;
+import org.loom.printing.PrintStrategy;
+import org.loom.printing.RowMajorStrategy;
 import org.loom.recovery.LoomRecoverySystem;
 import org.loom.recovery.RecoverySystem;
 import org.loom.scanning.LoomWorldScanner;
@@ -113,7 +115,20 @@ public class LoomPlugin implements ZenithProxyPlugin {
         chestRestocker = new LoomChestRestocker();
 
         // --- Step 5: Create orchestration services ---
-        printerController = new LoomPrinterController();
+        PrintStrategy printStrategy = new RowMajorStrategy();
+        printerController = new LoomPrinterController(
+            navigator,
+            worldScanner,
+            placementEngine,
+            schematicManager,
+            inventoryManager,
+            progressTracker,
+            loomLogger,
+            eventBus,
+            printStrategy,
+            CONFIG.maxPlacementRetries,
+            CONFIG.placementDelayTicks
+        );
 
         taskScheduler = new LoomTaskScheduler();
 
