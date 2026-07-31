@@ -130,7 +130,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
             CONFIG.placementDelayTicks
         );
 
-        taskScheduler = new LoomTaskScheduler();
+        taskScheduler = new LoomTaskScheduler(loomLogger);
 
         jobManager = new LoomJobManager(schematicManager, progressTracker, loomLogger);
 
@@ -140,7 +140,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
         );
 
         // --- Step 6: Create and register the module ---
-        loomModule = new LoomModule();
+        loomModule = new LoomModule(taskScheduler, jobManager);
         pluginAPI.registerModule(loomModule);
 
         // --- Step 7: Register commands ---
