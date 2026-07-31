@@ -48,11 +48,11 @@ public class Job {
     }
 
     public long getCreatedAt() {
-        return createdAt;
+        return createdAt > 0 ? createdAt : System.currentTimeMillis();
     }
 
     public JobState getState() {
-        return state;
+        return state != null ? state : JobState.QUEUED;
     }
 
     public void setState(JobState state) {

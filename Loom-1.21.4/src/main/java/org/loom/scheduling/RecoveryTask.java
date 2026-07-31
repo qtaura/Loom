@@ -1,45 +1,47 @@
 package org.loom.scheduling;
 
-import org.loom.recovery.LoomRecoverySystem;
+import org.loom.recovery.RecoverySystem;
 
 /**
- * A task that drives the {@link LoomRecoverySystem}.
+ * A task that wraps an active recovery.
  *
  * <p>Submitted at {@link TaskPriority#CRITICAL} to preempt all other tasks.
- * The recovery system itself manages the recovery state machine internally.
- * This task simply allows the scheduler to track completion.
+ * The recovery system itself advances via {@link LoomModule}'s tick loop.
+ * This task simply provides scheduler tracking — when recovery completes,
+ * this task marks itself complete and the scheduler resumes the previous task.
  */
 public class RecoveryTask extends Task {
 
-    private final LoomRecoverySystem recovery;
+    private final RecoverySystem recoverySystem;
 
-    public RecoveryTask(LoomRecoverySystem recovery) {
-        super("RecoveryTask");
-        this.recovery = recovery;
+    public RecoveryTask(RecoverySystem recoverySystem) {
+        super("Recovery-" + (recoverySystem.getRecoveryType() != null
+            ? recoverySystem.getRecoveryType().name() : "unknown"));
+        this.recoverySystem = recoverySystem;
     }
 
     @Override
     public void onStart() {
-        // Recovery already initiated by the detection in LoomRecoverySystem.tick()
+        // Recovery is initiated by LoomRecoverySystem detection methods
     }
 
     @Override
     public void tick() {
-        // Recovery is advanced by LoomRecoverySystem.tick() in LoomModule
+        // Recovery advances via LoomModule.handleBotTick → recoverySystem.tick()
     }
 
     @Override
     public void onPause() {
-        recovery.cancelRecovery();
+        recoverySystem.cancelRecovery();
     }
 
     @Override
     public void onFail(Throwable cause) {
-        recovery.cancelRecovery();
+        recoverySystem.cancelRecovery();
     }
 
     @Override
     public boolean isComplete() {
-        return !recovery.isRecovering();
+        return !recoverySystem.isRecovering();
     }
 }

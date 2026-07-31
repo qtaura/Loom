@@ -1,7 +1,5 @@
 package org.loom.printing;
 
-import org.loom.util.Material;
-
 /**
  * Defines the traversal order for the {@link PrinterController} through
  * the build area.

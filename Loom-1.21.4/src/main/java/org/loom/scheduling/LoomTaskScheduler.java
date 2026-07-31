@@ -104,8 +104,11 @@ public class LoomTaskScheduler implements TaskScheduler {
     public synchronized void resume(TaskHandle handle) {
         if (handle.getState() == TaskState.PAUSED) {
             handle.getTask().onResume();
+            handle.setState(TaskState.PENDING);
             // Re-queue at original priority — may preempt current
-            submit(handle.getTask(), handle.getPriority());
+            TaskHandle newHandle = submit(handle.getTask(), handle.getPriority());
+            // Sync the caller's handle reference
+            handle.setState(newHandle.getState());
         }
     }
 

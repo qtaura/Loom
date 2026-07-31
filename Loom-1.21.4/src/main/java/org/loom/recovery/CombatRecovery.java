@@ -22,11 +22,11 @@ public class CombatRecovery extends RecoveryAction {
 
     @Override
     public boolean tick() {
-        // TODO: Phase 1: FLEE — path away from threat (BARITONE.pathTo random direction)
+        // TODO: Phase 1: FLEE — path away from threat
         // TODO: Phase 2: WAIT — stay at safe distance for cooldown
-        // TODO: Phase 3: RETURN — navigate back to build area and last placement position
-        // TODO: Return true when ready to resume
-        throw new UnsupportedOperationException("Not implemented yet");
+        // TODO: Phase 3: RETURN — navigate back to build area
+        // For now, immediately complete to avoid blocking other recovery
+        return true;
     }
 
     @Override
