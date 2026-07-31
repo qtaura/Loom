@@ -6,9 +6,11 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Default implementation of {@link SchematicManager}.
@@ -24,11 +26,13 @@ public class LoomSchematicManager implements SchematicManager {
     private final Map<String, Schematic> cache;
     private final Map<SchematicFormat, SchematicLoader> loaders;
     private final LoomLogger logger;
+    private final Set<String> ignoredBlocks;
 
-    public LoomSchematicManager(LoomLogger logger) {
+    public LoomSchematicManager(LoomLogger logger, List<String> ignoredBlocks) {
         this.cache = new HashMap<>();
         this.loaders = new HashMap<>();
         this.logger = logger;
+        this.ignoredBlocks = new HashSet<>(ignoredBlocks);
 
         loaders.put(SchematicFormat.LITEMATICA, new LitematicaLoader());
         loaders.put(SchematicFormat.SPONGE_SCHEMATIC, new SpongeSchematicLoader());
@@ -56,6 +60,7 @@ public class LoomSchematicManager implements SchematicManager {
 
         try {
             Schematic schematic = loader.load(path);
+            applyIgnoredBlockFilter(schematic);
             cache.put(id, schematic);
             logger.info(TAG, "Loaded '%s': %dx%d, %d blocks, %s",
                 id, schematic.getWidth(), schematic.getHeight(),
@@ -142,6 +147,30 @@ public class LoomSchematicManager implements SchematicManager {
         String name = Path.of(path).getFileName().toString();
         int dot = name.lastIndexOf('.');
         return dot > 0 ? name.substring(0, dot) : name;
+    }
+
+    /**
+     * Matches Nerv's ignored-blocks behavior: removes palette entries
+     * for ignored block types and replaces them with air in the grid.
+     * This means ignored blocks are neither placed nor flagged as errors.
+     */
+    private void applyIgnoredBlockFilter(Schematic schematic) {
+        if (ignoredBlocks.isEmpty()) return;
+
+        int replaced = 0;
+        for (int y = 0; y < schematic.getHeight(); y++) {
+            for (int x = 0; x < schematic.getWidth(); x++) {
+                String block = schematic.getBlockAt(x, y);
+                if (ignoredBlocks.contains(block)) {
+                    schematic.replaceBlock(x, y, "minecraft:air");
+                    replaced++;
+                }
+            }
+        }
+
+        if (replaced > 0) {
+            logger.info(TAG, "Filtered %d blocks matching ignore list", replaced);
+        }
     }
 
     private static SchematicFormat detectFormat(String path) {
