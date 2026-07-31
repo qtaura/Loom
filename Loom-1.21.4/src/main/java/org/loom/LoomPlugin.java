@@ -23,6 +23,7 @@ import org.loom.printing.LoomPrinterController;
 import org.loom.printing.PlacementEngine;
 import org.loom.printing.PrinterController;
 import org.loom.printing.PrintStrategy;
+import org.loom.printing.SnakeStrategy;
 import org.loom.printing.RowMajorStrategy;
 import org.loom.recovery.LoomRecoverySystem;
 import org.loom.recovery.RecoverySystem;
@@ -142,7 +143,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
         );
 
         // --- Step 5: Create orchestration services ---
-        PrintStrategy printStrategy = new RowMajorStrategy();
+        PrintStrategy printStrategy = new SnakeStrategy();
         printerController = new LoomPrinterController(
             navigator,
             worldScanner,
