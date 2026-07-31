@@ -32,6 +32,7 @@ public class LoomSchematicManager implements SchematicManager {
 
         loaders.put(SchematicFormat.LITEMATICA, new LitematicaLoader());
         loaders.put(SchematicFormat.SPONGE_SCHEMATIC, new SpongeSchematicLoader());
+        loaders.put(SchematicFormat.NBT_STRUCTURE, new VanillaStructureLoader());
     }
 
     @Override
