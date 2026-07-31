@@ -25,6 +25,7 @@ import org.loom.printing.PrintStrategy;
 import org.loom.printing.RowMajorStrategy;
 import org.loom.recovery.LoomRecoverySystem;
 import org.loom.recovery.RecoverySystem;
+import org.loom.repair.LoomErrorRepair;
 import org.loom.scanning.LoomWorldScanner;
 import org.loom.scanning.WorldScanner;
 import org.loom.scheduling.LoomTaskScheduler;
@@ -74,6 +75,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
     static Navigator navigator;
     static LoomInventoryManager inventoryManager;
     static ChestRestocker chestRestocker;
+    static LoomErrorRepair errorRepair;
     static RecoverySystem recoverySystem;
     static WorldScanner worldScanner;
     static LoomModule loomModule;
@@ -118,6 +120,14 @@ public class LoomPlugin implements ZenithProxyPlugin {
             loomLogger,
             CONFIG.buildOriginX,
             CONFIG.buildOriginZ
+        );
+
+        errorRepair = new LoomErrorRepair(
+            worldScanner,
+            schematicManager,
+            placementEngine,
+            progressTracker,
+            loomLogger
         );
 
         // --- Step 5: Create orchestration services ---
