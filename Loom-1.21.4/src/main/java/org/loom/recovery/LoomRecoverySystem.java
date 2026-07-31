@@ -1,48 +1,119 @@
 package org.loom.recovery;
 
+import com.zenith.Proxy;
+import org.loom.jobs.JobManager;
+import org.loom.log.LoomLogger;
+import org.loom.navigation.Navigator;
+import org.loom.scheduling.TaskPriority;
+import org.loom.scheduling.TaskScheduler;
+import org.loom.state.ProgressTracker;
+
+import java.util.Optional;
+
+import static com.zenith.Globals.CACHE;
+
 /**
  * Default implementation of {@link RecoverySystem}.
+ *
+ * <p>Monitors bot health and connection each tick. On detecting a failure
+ * condition, saves progress, creates the appropriate {@link RecoveryAction},
+ * and submits a {@link RecoveryTask} at {@link TaskPriority#CRITICAL}.
  */
 public class LoomRecoverySystem implements RecoverySystem {
 
-    private final int maxRecoveryAttempts;
-    private final int combatFleeDistance;
+    private static final String TAG = "Recovery";
+    private static final int MAX_ATTEMPTS = 5;
+
+    private final Navigator navigator;
+    private final ProgressTracker progressTracker;
+    private final JobManager jobManager;
+    private final TaskScheduler taskScheduler;
+    private final LoomLogger logger;
+    private final int buildOriginX;
+    private final int buildOriginZ;
+
     private RecoveryAction currentRecovery;
     private int recoveryAttempts;
+    private String currentJobId;
 
-    public LoomRecoverySystem(int maxRecoveryAttempts, int combatFleeDistance) {
-        this.maxRecoveryAttempts = maxRecoveryAttempts;
-        this.combatFleeDistance = combatFleeDistance;
+    public LoomRecoverySystem(Navigator navigator,
+                               ProgressTracker progressTracker,
+                               JobManager jobManager,
+                               TaskScheduler taskScheduler,
+                               LoomLogger logger,
+                               int buildOriginX,
+                               int buildOriginZ) {
+        this.navigator = navigator;
+        this.progressTracker = progressTracker;
+        this.jobManager = jobManager;
+        this.taskScheduler = taskScheduler;
+        this.logger = logger;
+        this.buildOriginX = buildOriginX;
+        this.buildOriginZ = buildOriginZ;
         this.currentRecovery = null;
         this.recoveryAttempts = 0;
     }
 
+    // ==================================================================
+    // Public API
+    // ==================================================================
+
     @Override
     public void onDeath() {
-        // TODO: Save progress
-        // TODO: Start DeathRecovery
-        throw new UnsupportedOperationException("Not implemented yet");
+        if (isRecovering()) return;
+        recoveryAttempts++;
+        if (recoveryAttempts > MAX_ATTEMPTS) {
+            failActiveJob("Death recovery failed after " + MAX_ATTEMPTS + " attempts");
+            return;
+        }
+
+        String jobId = getActiveJobId();
+        logger.warn(TAG, "Death detected (attempt %d/%d), saving progress", recoveryAttempts, MAX_ATTEMPTS);
+        progressTracker.save(jobId);
+
+        currentRecovery = new DeathRecovery(
+            navigator, progressTracker, jobId, buildOriginX, buildOriginZ);
+        currentRecovery.onStart();
     }
 
     @Override
     public void onDisconnect() {
-        // TODO: Save progress
-        // TODO: Start DisconnectRecovery
-        throw new UnsupportedOperationException("Not implemented yet");
+        if (isRecovering()) return;
+        recoveryAttempts++;
+        if (recoveryAttempts > MAX_ATTEMPTS) {
+            failActiveJob("Disconnect recovery failed after " + MAX_ATTEMPTS + " attempts");
+            return;
+        }
+
+        String jobId = getActiveJobId();
+        logger.warn(TAG, "Disconnect detected (attempt %d/%d), saving progress", recoveryAttempts, MAX_ATTEMPTS);
+        progressTracker.save(jobId);
+
+        currentRecovery = new DisconnectRecovery(
+            navigator, progressTracker, jobId, buildOriginX, buildOriginZ);
+        currentRecovery.onStart();
     }
 
     @Override
     public void onStuck(int stuckX, int stuckZ) {
-        // TODO: Cancel current navigation
-        // TODO: Try re-pathing
-        // TODO: If still stuck, start a stuck recovery (move back, then around)
-        throw new UnsupportedOperationException("Not implemented yet");
+        if (isRecovering()) return;
+        recoveryAttempts++;
+        if (recoveryAttempts > MAX_ATTEMPTS) {
+            failActiveJob("Stuck recovery failed after " + MAX_ATTEMPTS + " attempts");
+            return;
+        }
+
+        logger.warn(TAG, "Stuck detected at (%d,%d), attempt %d/%d",
+            stuckX, stuckZ, recoveryAttempts, MAX_ATTEMPTS);
+
+        currentRecovery = new StuckRecovery(navigator, stuckX, stuckZ);
+        currentRecovery.onStart();
     }
 
     @Override
     public void onCombat(String threatName, double threatX, double threatZ) {
-        // TODO: Start CombatRecovery with flee distance
-        throw new UnsupportedOperationException("Not implemented yet");
+        logger.warn(TAG, "Combat detected: %s at (%.0f,%.0f) — not yet implemented",
+            threatName, threatX, threatZ);
     }
 
     @Override
@@ -57,16 +128,65 @@ public class LoomRecoverySystem implements RecoverySystem {
 
     @Override
     public void cancelRecovery() {
-        // TODO: Cancel current recovery action
-        // TODO: Reset state
-        throw new UnsupportedOperationException("Not implemented yet");
+        if (currentRecovery != null) {
+            currentRecovery.onFail();
+            currentRecovery = null;
+        }
+        recoveryAttempts = 0;
     }
 
     @Override
     public void tick() {
-        // TODO: Monitor CACHE.getPlayerCache().isAlive() → if dead, onDeath()
-        // TODO: Monitor connection state → if disconnected, onDisconnect()
-        // TODO: If recovery is active, call currentRecovery.tick()
-        // TODO: If recovery complete, emit event and resume tasks
+        // Monitor for death
+        if (!CACHE.getPlayerCache().isAlive()) {
+            onDeath();
+        }
+
+        // Monitor for disconnect
+        if (!Proxy.getInstance().isConnected()) {
+            onDisconnect();
+        }
+
+        // Monitor for stuck (delegated to Navigator)
+        if (navigator.isStuck()) {
+            int[] target = navigator.getCurrentPathTarget();
+            onStuck(target[0], target[1]);
+        }
+
+        // Advance active recovery
+        if (currentRecovery != null) {
+            try {
+                boolean done = currentRecovery.tick();
+                if (done) {
+                    currentRecovery.onComplete();
+                    logger.info(TAG, "Recovery complete (%s)", currentRecovery.getReason());
+                    currentRecovery = null;
+                    recoveryAttempts = 0;
+                }
+            } catch (Exception e) {
+                logger.error(TAG, "Recovery threw: " + e.getMessage(), e);
+                currentRecovery.onFail();
+                currentRecovery = null;
+            }
+        }
+    }
+
+    // ==================================================================
+    // Internal
+    // ==================================================================
+
+    private void failActiveJob(String reason) {
+        logger.error(TAG, reason, null);
+        // Mark job as failed via JobManager
+        jobManager.getAllJobs().stream()
+            .filter(j -> j.getState() == org.loom.jobs.JobState.ACTIVE)
+            .findFirst()
+            .ifPresent(j -> jobManager.failJob(j.getId(), reason));
+        cancelRecovery();
+    }
+
+    private String getActiveJobId() {
+        var activeJob = jobManager.getActiveJob();
+        return activeJob.map(org.loom.jobs.Job::getId).orElse("unknown");
     }
 }

@@ -151,12 +151,17 @@ public class LoomPlugin implements ZenithProxyPlugin {
         jobManager = new LoomJobManager(schematicManager, progressTracker, loomLogger);
 
         recoverySystem = new LoomRecoverySystem(
-            CONFIG.maxRecoveryAttempts,
-            CONFIG.combatFleeDistance
+            navigator,
+            progressTracker,
+            jobManager,
+            taskScheduler,
+            loomLogger,
+            CONFIG.buildOriginX,
+            CONFIG.buildOriginZ
         );
 
         // --- Step 6: Create and register the module ---
-        loomModule = new LoomModule(taskScheduler, jobManager);
+        loomModule = new LoomModule(taskScheduler, jobManager, recoverySystem);
         pluginAPI.registerModule(loomModule);
 
         // --- Step 7: Register commands ---

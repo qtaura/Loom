@@ -5,6 +5,7 @@ import com.zenith.event.client.ClientBotTick;
 import com.zenith.module.api.Module;
 import org.loom.jobs.Job;
 import org.loom.jobs.JobManager;
+import org.loom.recovery.RecoverySystem;
 import org.loom.scheduling.PrintTask;
 import org.loom.scheduling.TaskPriority;
 import org.loom.scheduling.TaskScheduler;
@@ -17,18 +18,21 @@ import static com.github.rfresh2.EventConsumer.of;
 /**
  * Main ZenithProxy module for Loom.
  *
- * <p>Subscribes to the bot tick loop and advances the
- * {@link TaskScheduler} one step per tick. On enable, checks for
- * an interrupted active job and resumes it.
+ * <p>Subscribes to the bot tick loop, runs recovery monitoring first,
+ * then advances the {@link TaskScheduler} one step per tick.
  */
 public class LoomModule extends Module {
 
     private final TaskScheduler taskScheduler;
     private final JobManager jobManager;
+    private final RecoverySystem recoverySystem;
 
-    public LoomModule(TaskScheduler taskScheduler, JobManager jobManager) {
+    public LoomModule(TaskScheduler taskScheduler,
+                       JobManager jobManager,
+                       RecoverySystem recoverySystem) {
         this.taskScheduler = taskScheduler;
         this.jobManager = jobManager;
+        this.recoverySystem = recoverySystem;
     }
 
     @Override
@@ -47,7 +51,6 @@ public class LoomModule extends Module {
 
     @Override
     public void onEnable() {
-        // Resume interrupted active job on startup
         Optional<Job> activeJob = jobManager.getActiveJob();
         if (activeJob.isPresent()) {
             Job job = activeJob.get();
@@ -60,19 +63,15 @@ public class LoomModule extends Module {
 
     @Override
     public void onDisable() {
-        // Pause active task on module disable
         var active = taskScheduler.getActiveTask();
         if (active != null) {
             taskScheduler.pause(active);
         }
     }
 
-    private void handleBotTickStarting(ClientBotTick.Starting event) {
-        // Reset any transient state when bot control begins
-    }
+    private void handleBotTickStarting(ClientBotTick.Starting event) {}
 
     private void handleBotTickStopped(ClientBotTick.Stopped event) {
-        // Pause active task when bot control stops
         var active = taskScheduler.getActiveTask();
         if (active != null) {
             taskScheduler.pause(active);
@@ -80,6 +79,19 @@ public class LoomModule extends Module {
     }
 
     private void handleBotTick(ClientBotTick event) {
+        // Recovery runs first — can preempt the active task
+        recoverySystem.tick();
+
+        // If a recovery just started, submit a RecoveryTask to preempt printing
+        if (recoverySystem.isRecovering()) {
+            var active = taskScheduler.getActiveTask();
+            if (active == null || active.getPriority() != TaskPriority.CRITICAL) {
+                taskScheduler.submit(new org.loom.scheduling.RecoveryTask(
+                    (org.loom.recovery.LoomRecoverySystem) recoverySystem),
+                    TaskPriority.CRITICAL);
+            }
+        }
+
         taskScheduler.tick();
     }
 }
