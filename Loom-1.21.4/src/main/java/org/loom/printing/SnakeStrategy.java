@@ -1,29 +1,36 @@
 package org.loom.printing;
 
 /**
- * Snake pattern traversal matching Nerv Printer's behavior.
+ * Snake pattern traversal — reproduces Nerv Printer's column visitation
+ * order for the equivalent of {@code linesPerRun = 1}.
  *
- * <p>Columns are traversed left-to-right. Within each column, the
- * direction alternates:
- * <ul>
- *   <li>Even columns (0, 2, 4...): top→bottom (y increases)</li>
- *   <li>Odd columns (1, 3, 5...): bottom→top (y decreases)</li>
- * </ul>
- *
- * <p>This eliminates the backtracking of row-major traversal.
- * After finishing a column, you are already at the start of the
- * next column — no need to walk back.
- *
+ * <h3>Nerv's model (linesPerRun = 1)</h3>
  * <pre>
- * Visual (4×3 grid):
- *   Row-major:        Snake:
- *   (0,0)→(1,0)      (0,0)→(0,1)→(0,2)
- *   →down             →right
- *   (1,0)→(0,0)      (1,2)→(1,1)→(1,0)
- *   →down             →right
- *   (0,1)→(1,1)      (2,0)→(2,1)→(2,2)
- *   →down             →right
- *   (1,1)→(0,1)      (3,2)→(3,1)→(3,0)
+ *   Column 0: N→S  (y=0→127)
+ *   Column 1: S→N  (y=127→0)
+ *   Column 2: N→S  (y=0→127)
+ *   Column 3: S→N  (y=127→0)
+ *   ...
+ * </pre>
+ *
+ * <h3>Loom's equivalent</h3>
+ * <pre>
+ *   Even columns (0,2,4...): y increases (north→south)
+ *   Odd columns (1,3,5...): y decreases (south→north)
+ * </pre>
+ *
+ * <p>For {@code linesPerRun > 1}, Nerv skips columns (visiting 0, 3, 6...)
+ * because the placement sweep covers multiple columns per pass. Loom places
+ * one block per tick and always visits every column — this is a justified
+ * architectural difference, not a behavioral mismatch. The {@code linesPerRun=1}
+ * path is the correct equivalent for Loom's point-to-point model.
+ *
+ * <h3>Trace (10-column grid, maxY=128)</h3>
+ * <pre>
+ *   (-1,0) → [0,0]→[0,1]→...→[0,127]
+ *                                → [1,127]→[1,126]→...→[1,0]
+ *                                                     → [2,0]→[2,1]→...
+ *                                                              → [3,127]→...
  * </pre>
  */
 public class SnakeStrategy implements PrintStrategy {
