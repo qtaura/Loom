@@ -2,87 +2,179 @@ package org.loom.state;
 
 import org.loom.printing.PrintStrategy;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Default implementation of {@link ProgressTracker}.
  *
- * <p>Uses an in-memory {@link Set} of placed positions for fast lookup
+ * <p>Uses a {@code boolean[][]} grid for O(1) {@link #isPlaced} lookup
  * and delegates persistence to {@link ProgressStore}.
+ *
+ * <p>Grid dimensions are initialized via {@link #startJob} which must be
+ * called before any placement tracking begins.
  */
 public class LoomProgressTracker implements ProgressTracker {
 
     private final ProgressStore store;
-    private final Set<ProgressEntry> placedPositions;
-    private final Set<ProgressEntry> wrongPositions;
+
+    private String jobId;
+    private boolean[][] placed;
+    private int width;
+    private int height;
     private int totalBlocks;
-    private String currentJobId;
+    private int totalPlaced;
 
     public LoomProgressTracker(ProgressStore store) {
         this.store = store;
-        this.placedPositions = new HashSet<>();
-        this.wrongPositions = new HashSet<>();
+        this.jobId = null;
+        this.width = 0;
+        this.height = 0;
         this.totalBlocks = 0;
-        this.currentJobId = null;
+        this.totalPlaced = 0;
+        this.placed = new boolean[0][0];
     }
+
+    // ==================================================================
+    // Lifecycle
+    // ==================================================================
+
+    @Override
+    public void startJob(String jobId, int width, int height, int totalBlocks) {
+        this.jobId = jobId;
+        this.width = width;
+        this.height = height;
+        this.totalBlocks = totalBlocks;
+        this.totalPlaced = 0;
+        this.placed = new boolean[height][width];
+
+        // Try to resume from disk
+        ProgressStore.ProgressFileData data = store.load(jobId);
+        if (data != null) {
+            // Only restore if dimensions match
+            if (data.width() == width && data.height() == height) {
+                for (ProgressEntry entry : data.entries()) {
+                    int x = entry.getX();
+                    int y = entry.getY();
+                    if (x >= 0 && x < width && y >= 0 && y < height && !placed[y][x]) {
+                        placed[y][x] = true;
+                        totalPlaced++;
+                    }
+                }
+                this.totalBlocks = data.totalBlocks();
+            }
+        }
+    }
+
+    // ==================================================================
+    // Tracking
+    // ==================================================================
 
     @Override
     public void markPlaced(int x, int y, String material) {
-        // TODO: Add to placedPositions set
-        // TODO: Remove from wrongPositions if present
-        throw new UnsupportedOperationException("Not implemented yet");
+        if (x < 0 || x >= width || y < 0 || y >= height) return;
+        if (!placed[y][x]) {
+            placed[y][x] = true;
+            totalPlaced++;
+        }
     }
 
     @Override
     public boolean isPlaced(int x, int y) {
-        // TODO: Check placedPositions set for entry with matching (x, y)
-        return false;
+        if (x < 0 || x >= width || y < 0 || y >= height) return false;
+        return placed[y][x];
     }
 
     @Override
     public void markWrong(int x, int y) {
-        // TODO: Add to wrongPositions set
-        throw new UnsupportedOperationException("Not implemented yet");
+        if (x < 0 || x >= width || y < 0 || y >= height) return;
+        if (placed[y][x]) {
+            placed[y][x] = false;
+            totalPlaced--;
+        }
     }
 
     @Override
     public int[] getNextUnplaced(int startX, int startY, PrintStrategy strategy) {
-        // TODO: Iterate from (startX, startY) using strategy pattern
-        // TODO: Skip already-placed positions
-        // TODO: Return first unplaced position or null
-        throw new UnsupportedOperationException("Not implemented yet");
+        int cx = startX;
+        int cy = startY;
+
+        int maxIterations = width * height;
+        for (int i = 0; i < maxIterations; i++) {
+            int[] next = strategy.nextPosition(cx, cy, width, height);
+            if (next == null) return null;
+
+            cx = next[0];
+            cy = next[1];
+
+            if (!placed[cy][cx]) {
+                return new int[]{cx, cy};
+            }
+        }
+
+        return null;
     }
 
-    @Override
-    public double getPercentComplete() {
-        return totalBlocks > 0 ? (double) placedPositions.size() / totalBlocks * 100.0 : 0.0;
-    }
+    // ==================================================================
+    // Persistence
+    // ==================================================================
 
     @Override
     public void save(String jobId) {
-        // TODO: Delegate to store.save(jobId, placedPositions as list)
-        throw new UnsupportedOperationException("Not implemented yet");
+        List<ProgressEntry> entries = new ArrayList<>();
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (placed[y][x]) {
+                    entries.add(new ProgressEntry(x, y, ""));
+                }
+            }
+        }
+        store.save(jobId, width, height, totalBlocks, entries);
     }
 
     @Override
     public void load(String jobId) {
-        // TODO: Set currentJobId
-        // TODO: Load entries from store.load(jobId)
-        // TODO: Populate placedPositions set
-        throw new UnsupportedOperationException("Not implemented yet");
+        ProgressStore.ProgressFileData data = store.load(jobId);
+        if (data == null) return;
+
+        this.jobId = jobId;
+        this.width = data.width();
+        this.height = data.height();
+        this.totalBlocks = data.totalBlocks();
+        this.totalPlaced = 0;
+        this.placed = new boolean[height][width];
+
+        for (ProgressEntry entry : data.entries()) {
+            int x = entry.getX();
+            int y = entry.getY();
+            if (x >= 0 && x < width && y >= 0 && y < height && !placed[y][x]) {
+                placed[y][x] = true;
+                totalPlaced++;
+            }
+        }
     }
 
     @Override
     public void clear(String jobId) {
-        // TODO: Clear placedPositions and wrongPositions
-        // TODO: Delete progress file via store.delete(jobId)
-        throw new UnsupportedOperationException("Not implemented yet");
+        store.delete(jobId);
+        if (jobId.equals(this.jobId)) {
+            this.placed = new boolean[height][width];
+            this.totalPlaced = 0;
+        }
+    }
+
+    // ==================================================================
+    // Query
+    // ==================================================================
+
+    @Override
+    public double getPercentComplete() {
+        return totalBlocks > 0 ? (double) totalPlaced / totalBlocks * 100.0 : 0.0;
     }
 
     @Override
     public int getTotalPlaced() {
-        return placedPositions.size();
+        return totalPlaced;
     }
 
     @Override

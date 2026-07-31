@@ -14,6 +14,19 @@ import org.loom.printing.PrintStrategy;
 public interface ProgressTracker {
 
     /**
+     * Initializes the tracker for a new or resumed job.
+     *
+     * <p>Must be called before any placement tracking begins.
+     * If a saved progress file exists for this job, it will be loaded.
+     *
+     * @param jobId       the job identifier
+     * @param width       schematic width (X dimension)
+     * @param height      schematic height (Y dimension)
+     * @param totalBlocks total non-air blocks in the schematic
+     */
+    void startJob(String jobId, int width, int height, int totalBlocks);
+
+    /**
      * Marks a schematic-relative position as placed.
      *
      * @param x        schematic-relative X

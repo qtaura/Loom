@@ -107,17 +107,22 @@ public class LoomPrinterController implements PrinterController {
         this.schematicY = 0;
         this.phase = Phase.ADVANCE;
 
+        int width = schematicManager.getWidth(job.getSchematicId());
+        int height = schematicManager.getHeight(job.getSchematicId());
+        int blocks = schematicManager.getTotalBlocks(job.getSchematicId());
+        progressTracker.startJob(job.getId(), width, height, blocks);
+
         logger.info(TAG, "Started job %s: schematic=%s origin=(%d,%d,%d) size=%dx%d",
             job.getId(), job.getSchematicId(),
             job.getOriginX(), job.getOriginY(), job.getOriginZ(),
-            schematicManager.getWidth(job.getSchematicId()),
-            schematicManager.getHeight(job.getSchematicId()));
+            width, height);
     }
 
     @Override
     public void pause() {
         if (phase == Phase.IDLE || phase == Phase.PAUSED) return;
         this.paused = true;
+        if (currentJob != null) progressTracker.save(currentJob.getId());
         logger.info(TAG, "Paused at (%d, %d)", schematicX, schematicY);
     }
 
@@ -131,6 +136,7 @@ public class LoomPrinterController implements PrinterController {
 
     @Override
     public void cancel() {
+        if (currentJob != null) progressTracker.save(currentJob.getId());
         this.currentJob = null;
         this.schematicX = -1;
         this.schematicY = -1;
@@ -184,6 +190,13 @@ public class LoomPrinterController implements PrinterController {
             currentJob.getSchematicId(), schematicX, schematicY);
 
         if ("minecraft:air".equals(expected)) {
+            phase = Phase.ADVANCE;
+            return;
+        }
+
+        // Skip already-placed positions from previous sessions
+        if (progressTracker.isPlaced(schematicX, schematicY)) {
+            logger.debug(TAG, "Already tracked as placed at (%d,%d), skipping", schematicX, schematicY);
             phase = Phase.ADVANCE;
             return;
         }
@@ -344,6 +357,7 @@ public class LoomPrinterController implements PrinterController {
             currentJob.getSchematicId(), schematicX, schematicY);
 
         if (worldScanner.verifyBlock(worldX, worldY, worldZ, expected)) {
+            progressTracker.markPlaced(schematicX, schematicY, expected);
             logger.debug(TAG, "Verified %s at (%d,%d) → world (%d,%d,%d)",
                 expected, schematicX, schematicY, worldX, worldY, worldZ);
             retryCount = 0;
@@ -368,11 +382,18 @@ public class LoomPrinterController implements PrinterController {
 
         int[] next = strategy.nextPosition(schematicX, schematicY, width, height);
         if (next == null) {
-            logger.info(TAG, "Job %s completed at %dx%d",
-                currentJob.getId(), schematicX, schematicY);
+            progressTracker.save(currentJob.getId());
+            logger.info(TAG, "Job %s completed, %d/%d blocks (%.1f%%)",
+                currentJob.getId(), progressTracker.getTotalPlaced(),
+                progressTracker.getTotalBlocks(), progressTracker.getPercentComplete());
             phase = Phase.IDLE;
             currentJob = null;
             return;
+        }
+
+        // Save progress on row completion (when y changes)
+        if (next[1] != schematicY) {
+            progressTracker.save(currentJob.getId());
         }
 
         schematicX = next[0];
