@@ -15,6 +15,7 @@ import org.loom.scheduling.TaskPriority;
 import org.loom.scheduling.TaskScheduler;
 import org.loom.schematic.SchematicManager;
 import org.loom.state.ProgressTracker;
+import org.loom.util.AsyncLoomEventBus;
 
 import java.util.Optional;
 
@@ -41,17 +42,20 @@ public class LoomCommand extends Command {
     private final PrinterController printerController;
     private final ProgressTracker progressTracker;
     private final SchematicManager schematicManager;
+    private final AsyncLoomEventBus eventBus;
 
     public LoomCommand(JobManager jobManager,
                         TaskScheduler taskScheduler,
                         PrinterController printerController,
                         ProgressTracker progressTracker,
-                        SchematicManager schematicManager) {
+                        SchematicManager schematicManager,
+                        AsyncLoomEventBus eventBus) {
         this.jobManager = jobManager;
         this.taskScheduler = taskScheduler;
         this.printerController = printerController;
         this.progressTracker = progressTracker;
         this.schematicManager = schematicManager;
+        this.eventBus = eventBus;
     }
 
     @Override
@@ -101,7 +105,7 @@ public class LoomCommand extends Command {
                         return ERROR;
                     }
 
-                    PrintTask task = new PrintTask(job, printerController, jobManager);
+                    PrintTask task = new PrintTask(job, printerController, jobManager, eventBus);
                     taskScheduler.submit(task, TaskPriority.NORMAL);
 
                     c.getSource().getEmbed()
@@ -135,7 +139,7 @@ public class LoomCommand extends Command {
                     return ERROR;
                 }
                 Job job = activeJob.get();
-                PrintTask task = new PrintTask(job, printerController, jobManager);
+                PrintTask task = new PrintTask(job, printerController, jobManager, eventBus);
                 taskScheduler.submit(task, TaskPriority.NORMAL);
                 c.getSource().getEmbed()
                     .title("Build resumed")

@@ -97,7 +97,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
         schematicManager = new LoomSchematicManager(loomLogger);
 
         ProgressStore progressStore = new ProgressStore();
-        progressTracker = new LoomProgressTracker(progressStore);
+        progressTracker = new LoomProgressTracker(progressStore, eventBus);
 
         // --- Step 4: Create mid-level services ---
         worldScanner = new LoomWorldScanner(schematicManager, loomLogger);
@@ -119,6 +119,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
             navigator,
             inventoryManager,
             loomLogger,
+            eventBus,
             CONFIG.buildOriginX,
             CONFIG.buildOriginZ
         );
@@ -157,6 +158,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
             jobManager,
             taskScheduler,
             loomLogger,
+            eventBus,
             CONFIG.buildOriginX,
             CONFIG.buildOriginZ
         );
@@ -168,7 +170,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
         // --- Step 7: Register commands ---
         pluginAPI.registerCommand(new LoomCommand(
             jobManager, taskScheduler, printerController,
-            progressTracker, schematicManager
+            progressTracker, schematicManager, eventBus
         ));
         pluginAPI.registerCommand(new SchematicCommand());
         pluginAPI.registerCommand(new ConfigCommand());

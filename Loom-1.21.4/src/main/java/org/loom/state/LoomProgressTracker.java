@@ -1,6 +1,8 @@
 package org.loom.state;
 
+import org.loom.event.StateLoadedEvent;
 import org.loom.printing.PrintStrategy;
+import org.loom.util.AsyncLoomEventBus;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,6 +19,7 @@ import java.util.List;
 public class LoomProgressTracker implements ProgressTracker {
 
     private final ProgressStore store;
+    private final AsyncLoomEventBus eventBus;
 
     private String jobId;
     private boolean[][] placed;
@@ -25,8 +28,9 @@ public class LoomProgressTracker implements ProgressTracker {
     private int totalBlocks;
     private int totalPlaced;
 
-    public LoomProgressTracker(ProgressStore store) {
+    public LoomProgressTracker(ProgressStore store, AsyncLoomEventBus eventBus) {
         this.store = store;
+        this.eventBus = eventBus;
         this.jobId = null;
         this.width = 0;
         this.height = 0;
@@ -62,6 +66,7 @@ public class LoomProgressTracker implements ProgressTracker {
                     }
                 }
                 this.totalBlocks = data.totalBlocks();
+                eventBus.publish(new StateLoadedEvent(jobId, totalPlaced, totalBlocks));
             }
         }
     }

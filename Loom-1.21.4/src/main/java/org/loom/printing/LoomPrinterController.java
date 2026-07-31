@@ -8,6 +8,8 @@ import org.loom.navigation.Navigator;
 import org.loom.scanning.WorldScanner;
 import org.loom.schematic.SchematicManager;
 import org.loom.state.ProgressTracker;
+import org.loom.event.BlockPlacedEvent;
+import org.loom.event.RowCompletedEvent;
 import org.loom.util.AsyncLoomEventBus;
 
 /**
@@ -358,6 +360,7 @@ public class LoomPrinterController implements PrinterController {
 
         if (worldScanner.verifyBlock(worldX, worldY, worldZ, expected)) {
             progressTracker.markPlaced(schematicX, schematicY, expected);
+            eventBus.publish(new BlockPlacedEvent(worldX, worldY, worldZ, expected));
             logger.debug(TAG, "Verified %s at (%d,%d) → world (%d,%d,%d)",
                 expected, schematicX, schematicY, worldX, worldY, worldZ);
             retryCount = 0;
@@ -394,6 +397,7 @@ public class LoomPrinterController implements PrinterController {
         // Save progress on row completion (when y changes)
         if (next[1] != schematicY) {
             progressTracker.save(currentJob.getId());
+            eventBus.publish(new RowCompletedEvent(schematicY));
         }
 
         schematicX = next[0];
