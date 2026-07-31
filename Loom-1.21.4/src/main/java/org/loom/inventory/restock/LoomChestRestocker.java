@@ -4,10 +4,12 @@ import com.zenith.feature.inventory.InventoryActionRequest;
 import com.zenith.feature.inventory.actions.ShiftClick;
 import com.zenith.mc.block.BlockRegistry;
 import org.geysermc.mcprotocollib.protocol.data.game.inventory.ShiftClickItemAction;
+import org.loom.event.RestockCompletedEvent;
 import org.loom.inventory.LoomInventoryManager;
 import org.loom.log.LoomLogger;
 import org.loom.navigation.NavigationResult;
 import org.loom.navigation.Navigator;
+import org.loom.util.AsyncLoomEventBus;
 
 import static com.zenith.Globals.BARITONE;
 import static com.zenith.Globals.CACHE;
@@ -48,6 +50,7 @@ public class LoomChestRestocker implements ChestRestocker {
     private final Navigator navigator;
     private final LoomInventoryManager inventoryManager;
     private final LoomLogger logger;
+    private final AsyncLoomEventBus eventBus;
     private final int buildOriginX;
     private final int buildOriginZ;
 
@@ -59,11 +62,13 @@ public class LoomChestRestocker implements ChestRestocker {
     public LoomChestRestocker(Navigator navigator,
                                LoomInventoryManager inventoryManager,
                                LoomLogger logger,
+                               AsyncLoomEventBus eventBus,
                                int buildOriginX,
                                int buildOriginZ) {
         this.navigator = navigator;
         this.inventoryManager = inventoryManager;
         this.logger = logger;
+        this.eventBus = eventBus;
         this.buildOriginX = buildOriginX;
         this.buildOriginZ = buildOriginZ;
         this.phase = Phase.IDLE;
@@ -255,8 +260,9 @@ public class LoomChestRestocker implements ChestRestocker {
     private void tickNavBack() {
         if (isAtBuildArea()) {
             phase = Phase.DONE;
-            inventoryManager.refresh();
-            logger.info(TAG, "Restock complete");
+                inventoryManager.refresh();
+                eventBus.publish(new RestockCompletedEvent(0));
+                logger.info(TAG, "Restock complete");
             return;
         }
 

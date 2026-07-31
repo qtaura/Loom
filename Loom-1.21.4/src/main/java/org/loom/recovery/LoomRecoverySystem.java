@@ -1,12 +1,17 @@
 package org.loom.recovery;
 
 import com.zenith.Proxy;
+import org.loom.event.BotStuckEvent;
+import org.loom.event.CombatDetectedEvent;
+import org.loom.event.RecoveryCompletedEvent;
+import org.loom.event.RecoveryStartedEvent;
 import org.loom.jobs.JobManager;
 import org.loom.log.LoomLogger;
 import org.loom.navigation.Navigator;
 import org.loom.scheduling.TaskPriority;
 import org.loom.scheduling.TaskScheduler;
 import org.loom.state.ProgressTracker;
+import org.loom.util.AsyncLoomEventBus;
 
 import java.util.Optional;
 
@@ -29,6 +34,7 @@ public class LoomRecoverySystem implements RecoverySystem {
     private final JobManager jobManager;
     private final TaskScheduler taskScheduler;
     private final LoomLogger logger;
+    private final AsyncLoomEventBus eventBus;
     private final int buildOriginX;
     private final int buildOriginZ;
 
@@ -41,6 +47,7 @@ public class LoomRecoverySystem implements RecoverySystem {
                                JobManager jobManager,
                                TaskScheduler taskScheduler,
                                LoomLogger logger,
+                               AsyncLoomEventBus eventBus,
                                int buildOriginX,
                                int buildOriginZ) {
         this.navigator = navigator;
@@ -48,6 +55,7 @@ public class LoomRecoverySystem implements RecoverySystem {
         this.jobManager = jobManager;
         this.taskScheduler = taskScheduler;
         this.logger = logger;
+        this.eventBus = eventBus;
         this.buildOriginX = buildOriginX;
         this.buildOriginZ = buildOriginZ;
         this.currentRecovery = null;
@@ -74,6 +82,7 @@ public class LoomRecoverySystem implements RecoverySystem {
         currentRecovery = new DeathRecovery(
             navigator, progressTracker, jobId, buildOriginX, buildOriginZ);
         currentRecovery.onStart();
+        eventBus.publish(new RecoveryStartedEvent(RecoveryReason.DEATH));
     }
 
     @Override
@@ -92,6 +101,7 @@ public class LoomRecoverySystem implements RecoverySystem {
         currentRecovery = new DisconnectRecovery(
             navigator, progressTracker, jobId, buildOriginX, buildOriginZ);
         currentRecovery.onStart();
+        eventBus.publish(new RecoveryStartedEvent(RecoveryReason.DISCONNECT));
     }
 
     @Override
@@ -108,12 +118,14 @@ public class LoomRecoverySystem implements RecoverySystem {
 
         currentRecovery = new StuckRecovery(navigator, stuckX, stuckZ);
         currentRecovery.onStart();
+        eventBus.publish(new BotStuckEvent(stuckX, stuckZ, 0));
     }
 
     @Override
     public void onCombat(String threatName, double threatX, double threatZ) {
         logger.warn(TAG, "Combat detected: %s at (%.0f,%.0f) — not yet implemented",
             threatName, threatX, threatZ);
+        eventBus.publish(new CombatDetectedEvent(threatName, threatX, threatZ, 0));
     }
 
     @Override
@@ -159,6 +171,7 @@ public class LoomRecoverySystem implements RecoverySystem {
                 boolean done = currentRecovery.tick();
                 if (done) {
                     currentRecovery.onComplete();
+                    eventBus.publish(new RecoveryCompletedEvent(currentRecovery.getReason()));
                     logger.info(TAG, "Recovery complete (%s)", currentRecovery.getReason());
                     currentRecovery = null;
                     recoveryAttempts = 0;
