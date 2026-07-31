@@ -1,5 +1,7 @@
 package org.loom.scheduling;
 
+import org.loom.log.LoomLogger;
+
 import java.util.Comparator;
 import java.util.PriorityQueue;
 import java.util.UUID;
@@ -7,53 +9,104 @@ import java.util.UUID;
 /**
  * Default implementation of {@link TaskScheduler}.
  *
- * <p>Uses a priority queue for pending tasks. The highest-priority task
- * is always the active task. A newly submitted task preempts the current
- * task if its priority is strictly greater.
+ * <p>Priority-based scheduling with preemption. A higher-priority task
+ * pauses the current active task, which resumes when the higher-priority
+ * task completes.
+ *
+ * <h3>Tick model</h3>
+ * <ol>
+ *   <li>If active task exists, tick it</li>
+ *   <li>If active task reports {@code isComplete()}, transition to COMPLETED
+ *       and dequeue next pending task</li>
+ *   <li>If idle and queue has tasks, dequeue highest priority as active</li>
+ * </ol>
  */
 public class LoomTaskScheduler implements TaskScheduler {
 
+    private static final String TAG = "Scheduler";
+
     private final PriorityQueue<TaskHandle> pendingQueue;
     private TaskHandle activeTask;
+    private final LoomLogger logger;
 
-    public LoomTaskScheduler() {
+    public LoomTaskScheduler(LoomLogger logger) {
+        this.logger = logger;
         this.pendingQueue = new PriorityQueue<>(
             Comparator.comparing(TaskHandle::getPriority).reversed()
         );
         this.activeTask = null;
     }
 
+    // ==================================================================
+    // Public API
+    // ==================================================================
+
     @Override
-    public TaskHandle submit(Task task, TaskPriority priority) {
-        String taskId = task.getClass().getSimpleName() + "-" + UUID.randomUUID().toString().substring(0, 8);
+    public synchronized TaskHandle submit(Task task, TaskPriority priority) {
+        String taskId = task.getClass().getSimpleName() + "-"
+            + UUID.randomUUID().toString().substring(0, 6);
         TaskHandle handle = new TaskHandle(taskId, task, priority);
 
-        // TODO: Check if this task should preempt the current active task
-        // TODO: If so, pause current task, enqueue it, and start new task
-        // TODO: Otherwise, enqueue the new task
+        // Check preemption: if new task has higher priority than active, preempt
+        if (activeTask != null
+            && activeTask.getState() == TaskState.RUNNING
+            && priority.compareTo(activeTask.getPriority()) > 0) {
 
-        throw new UnsupportedOperationException("Not implemented yet");
+            logger.info(TAG, "Preempt: %s (%s) preempts %s (%s)",
+                handle.getTaskId(), priority,
+                activeTask.getTaskId(), activeTask.getPriority());
+
+            activeTask.getTask().onPause();
+            activeTask.setState(TaskState.PAUSED);
+            pendingQueue.add(activeTask);
+            activateTask(handle);
+        } else if (activeTask == null
+            || activeTask.getState() == TaskState.PAUSED
+            || activeTask.getState() == TaskState.COMPLETED
+            || activeTask.getState() == TaskState.FAILED) {
+
+            activateTask(handle);
+        } else {
+            pendingQueue.add(handle);
+            logger.debug(TAG, "Queued %s (%s), %d pending",
+                handle.getTaskId(), priority, pendingQueue.size());
+        }
+
+        return handle;
     }
 
     @Override
-    public void cancel(TaskHandle handle) {
-        // TODO: If active, call onFail and dequeue next
-        // TODO: If pending, remove from queue
-        throw new UnsupportedOperationException("Not implemented yet");
+    public synchronized void cancel(TaskHandle handle) {
+        if (handle == activeTask) {
+            handle.getTask().onPause();
+            handle.setState(TaskState.FAILED);
+            activeTask = null;
+            dequeueNext();
+        } else {
+            pendingQueue.remove(handle);
+            handle.setState(TaskState.FAILED);
+        }
+        logger.debug(TAG, "Cancelled %s", handle.getTaskId());
     }
 
     @Override
-    public void pause(TaskHandle handle) {
-        // TODO: Call task.onPause() and set state to PAUSED
-        // TODO: Dequeue next task if this was active
-        throw new UnsupportedOperationException("Not implemented yet");
+    public synchronized void pause(TaskHandle handle) {
+        if (handle == activeTask && handle.getState() == TaskState.RUNNING) {
+            handle.getTask().onPause();
+            handle.setState(TaskState.PAUSED);
+            activeTask = null;
+            dequeueNext();
+            logger.debug(TAG, "Paused %s", handle.getTaskId());
+        }
     }
 
     @Override
-    public void resume(TaskHandle handle) {
-        // TODO: Re-enqueue at original priority
-        // TODO: Call task.onResume() when it becomes active
-        throw new UnsupportedOperationException("Not implemented yet");
+    public synchronized void resume(TaskHandle handle) {
+        if (handle.getState() == TaskState.PAUSED) {
+            handle.getTask().onResume();
+            // Re-queue at original priority — may preempt current
+            submit(handle.getTask(), handle.getPriority());
+        }
     }
 
     @Override
@@ -62,11 +115,48 @@ public class LoomTaskScheduler implements TaskScheduler {
     }
 
     @Override
-    public void tick() {
-        // TODO: If active task is complete, transition to COMPLETED and dequeue next
-        // TODO: If idle and queue has tasks, dequeue next and start it
-        // TODO: If active task exists, call activeTask.getTask().tick()
-        // TODO: Publish task state change events
-        throw new UnsupportedOperationException("Not implemented yet");
+    public synchronized void tick() {
+        // Tick the active task
+        if (activeTask != null && activeTask.getState() == TaskState.RUNNING) {
+            try {
+                activeTask.getTask().tick();
+            } catch (Exception e) {
+                logger.error(TAG, "Task " + activeTask.getTaskId() + " threw", e);
+                activeTask.getTask().onFail(e);
+                activeTask.setState(TaskState.FAILED);
+                activeTask = null;
+                dequeueNext();
+                return;
+            }
+
+            // Check completion
+            if (activeTask.getTask().isComplete()) {
+                activeTask.getTask().onComplete();
+                activeTask.setState(TaskState.COMPLETED);
+                logger.info(TAG, "Completed %s", activeTask.getTaskId());
+                activeTask = null;
+                dequeueNext();
+            }
+        } else if (activeTask == null) {
+            dequeueNext();
+        }
+    }
+
+    // ==================================================================
+    // Internal
+    // ==================================================================
+
+    private void activateTask(TaskHandle handle) {
+        handle.setState(TaskState.RUNNING);
+        activeTask = handle;
+        handle.getTask().onStart();
+        logger.info(TAG, "Activated %s (%s)", handle.getTaskId(), handle.getPriority());
+    }
+
+    private void dequeueNext() {
+        if (!pendingQueue.isEmpty()) {
+            TaskHandle next = pendingQueue.poll();
+            activateTask(next);
+        }
     }
 }

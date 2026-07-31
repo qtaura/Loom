@@ -3,29 +3,36 @@ package org.loom;
 import com.github.rfresh2.EventConsumer;
 import com.zenith.event.client.ClientBotTick;
 import com.zenith.module.api.Module;
+import org.loom.jobs.Job;
+import org.loom.jobs.JobManager;
+import org.loom.scheduling.PrintTask;
+import org.loom.scheduling.TaskPriority;
+import org.loom.scheduling.TaskScheduler;
 
 import java.util.List;
+import java.util.Optional;
 
 import static com.github.rfresh2.EventConsumer.of;
-import static org.loom.LoomPlugin.CONFIG;
 
 /**
  * Main ZenithProxy module for Loom.
  *
- * This module subscribes to the bot tick loop and advances the
- * {@link org.loom.scheduling.TaskScheduler} one step per tick.
- * It is the bridge between ZenithProxy's module lifecycle and
- * Loom's internal orchestration.
+ * <p>Subscribes to the bot tick loop and advances the
+ * {@link TaskScheduler} one step per tick. On enable, checks for
+ * an interrupted active job and resumes it.
  */
 public class LoomModule extends Module {
 
-    // TODO: Inject subsystems via constructor or setter
-    // private final TaskScheduler taskScheduler;
-    // private final RecoverySystem recoverySystem;
+    private final TaskScheduler taskScheduler;
+    private final JobManager jobManager;
+
+    public LoomModule(TaskScheduler taskScheduler, JobManager jobManager) {
+        this.taskScheduler = taskScheduler;
+        this.jobManager = jobManager;
+    }
 
     @Override
     public boolean enabledSetting() {
-        // TODO: Reference a specific config boolean for module enable
         return true;
     }
 
@@ -40,28 +47,39 @@ public class LoomModule extends Module {
 
     @Override
     public void onEnable() {
-        // TODO: Initialize all subsystems
-        // TODO: Load progress from disk
-        // TODO: If an active job exists, submit a PrintTask to the TaskScheduler
+        // Resume interrupted active job on startup
+        Optional<Job> activeJob = jobManager.getActiveJob();
+        if (activeJob.isPresent()) {
+            Job job = activeJob.get();
+            info("Resuming interrupted job: %s", job.getId());
+            PrintTask printTask = new PrintTask(job,
+                LoomPlugin.printerController, jobManager);
+            taskScheduler.submit(printTask, TaskPriority.NORMAL);
+        }
     }
 
     @Override
     public void onDisable() {
-        // TODO: Save progress to disk
-        // TODO: Shutdown all subsystems
-        // TODO: Cancel all active tasks
+        // Pause active task on module disable
+        var active = taskScheduler.getActiveTask();
+        if (active != null) {
+            taskScheduler.pause(active);
+        }
     }
 
     private void handleBotTickStarting(ClientBotTick.Starting event) {
-        // TODO: Reset transient state when bot control begins
+        // Reset any transient state when bot control begins
     }
 
     private void handleBotTickStopped(ClientBotTick.Stopped event) {
-        // TODO: Pause active task and save progress when bot control stops
+        // Pause active task when bot control stops
+        var active = taskScheduler.getActiveTask();
+        if (active != null) {
+            taskScheduler.pause(active);
+        }
     }
 
     private void handleBotTick(ClientBotTick event) {
-        // TODO: recoverySystem.tick();
-        // TODO: taskScheduler.tick();
+        taskScheduler.tick();
     }
 }
