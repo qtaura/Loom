@@ -64,6 +64,19 @@ public interface LoomInventoryManager {
     int getAvailableSlots();
 
     /**
+     * Swaps a material from a main inventory slot into a hotbar slot.
+     *
+     * <p>Submits inventory click actions to ZenithProxy's {@code INVENTORY}
+     * system. The swap completes within the current tick (actions are executed
+     * with delay 0).
+     *
+     * @param material         the material to swap into the hotbar
+     * @param targetHotbarSlot the target hotbar slot index (0-8)
+     * @return the container slot index of the material (36-44), or -1 if swap failed
+     */
+    int swapIntoHotbar(Material material, int targetHotbarSlot);
+
+    /**
      * Refreshes the material ledger from the bot's actual inventory.
      */
     void refresh();

@@ -156,8 +156,20 @@ public class LoomPlacementEngine implements PlacementEngine {
         // --- Slot selection ---
         int slot = inventoryManager.reserveSlot(material);
         if (slot < 0) {
-            logger.warn(TAG, "No hotbar slot for %s", material.getDisplayName());
-            return PlacementResult.NO_MATERIAL;
+            // Material not in hotbar — try swapping it in
+            int freeSlot = findFreeHotbarSlot();
+            if (freeSlot < 0) {
+                logger.warn(TAG, "No free hotbar slot for %s", material.getDisplayName());
+                return PlacementResult.NO_MATERIAL;
+            }
+            int result = inventoryManager.swapIntoHotbar(material, freeSlot);
+            if (result < 0) {
+                logger.warn(TAG, "Swap failed for %s", material.getDisplayName());
+                return PlacementResult.NO_MATERIAL;
+            }
+            // Swap submitted — on next call the material will be in hotbar
+            logger.debug(TAG, "Swapped %s into hotbar slot %d", material.getDisplayName(), freeSlot);
+            return PlacementResult.FAILED_RETRIES_EXHAUSTED;
         }
 
         // --- Face and rotation ---
@@ -226,5 +238,13 @@ public class LoomPlacementEngine implements PlacementEngine {
             session.send(packet);
             session.send(new ServerboundSwingPacket(Hand.MAIN_HAND));
         }
+    }
+
+    /**
+     * Returns the first hotbar slot likely to be usable for swapping.
+     * Currently a simple heuristic: prefers slot 0.
+     */
+    private int findFreeHotbarSlot() {
+        return 0;
     }
 }

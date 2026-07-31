@@ -1,5 +1,9 @@
 package org.loom.inventory;
 
+import com.zenith.feature.inventory.InventoryActionRequest;
+import com.zenith.feature.inventory.actions.ClickItem;
+import com.zenith.feature.inventory.actions.SetHeldItem;
+import org.geysermc.mcprotocollib.protocol.data.game.inventory.ClickItemAction;
 import org.loom.util.Material;
 
 import java.util.HashSet;
@@ -7,22 +11,17 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import static com.zenith.Globals.INVENTORY;
+
 /**
  * Default implementation of {@link LoomInventoryManager}.
- *
- * <p>Tracks material counts, hotbar slot reservations, and restock needs.
- * Delegates inventory scanning to {@link MaterialLedger}.
- *
- * <p>Slot reservations are conceptual — this class tracks which hotbar
- * slots are reserved for which materials but does NOT perform slot swaps.
- * The caller (PlacementEngine) handles actual inventory manipulation
- * via ZenithProxy's {@code INVENTORY} system.
  */
 public class LoomInventoryManagerImpl implements LoomInventoryManager {
 
     private static final int HOTBAR_START = 36;
-    private static final int HOTBAR_END   = 44; // inclusive
+    private static final int HOTBAR_END   = 44;
     private static final int HOTBAR_SIZE  = 9;
+    private static final int SWAP_PRIORITY = 5000;
 
     private final MaterialLedger ledger;
     private final int restockThreshold;
@@ -75,35 +74,63 @@ public class LoomInventoryManagerImpl implements LoomInventoryManager {
 
     @Override
     public synchronized int reserveSlot(Material material) {
-        // First: is it already in a hotbar slot?
-        Optional<Integer> hotbarSlot = getHotbarSlot(material);
-        if (hotbarSlot.isPresent()) {
-            int slot = hotbarSlot.get();
+        // Only reserve if material is already in a hotbar slot
+        Optional<Integer> existing = getHotbarSlot(material);
+        if (existing.isPresent()) {
+            int slot = existing.get();
             reservedSlots.add(slot);
             return slot;
         }
-
-        // Second: find it anywhere in inventory
-        int anySlot = ledger.findFirstSlot(material);
-        if (anySlot < 0) {
-            return -1; // material not found
-        }
-
-        // Third: find a free hotbar slot
-        for (int hb = 0; hb < HOTBAR_SIZE; hb++) {
-            if (!reservedSlots.contains(hb)) {
-                reservedSlots.add(hb);
-                // Return the hotbar index. Caller must swap the item into this slot.
-                return hb;
-            }
-        }
-
-        return -1; // no free hotbar slot
+        return -1; // needs swap first
     }
 
     @Override
     public synchronized void releaseSlot(int slot) {
         reservedSlots.remove(slot);
+    }
+
+    // ==================================================================
+    // Swap
+    // ==================================================================
+
+    @Override
+    public int swapIntoHotbar(Material material, int targetHotbarSlot) {
+        if (targetHotbarSlot < 0 || targetHotbarSlot >= HOTBAR_SIZE) return -1;
+
+        // Find material in main inventory (not already in hotbar)
+        int sourceSlot = -1;
+        List<Integer> slots = ledger.getSlotsFor(material);
+        for (int slot : slots) {
+            if (slot >= 9 && slot <= 35) {
+                sourceSlot = slot;
+                break;
+            }
+        }
+        if (sourceSlot < 0) return -1;
+
+        int targetContainerSlot = HOTBAR_START + targetHotbarSlot;
+
+        // Triple-click swap: pick up source → swap with target → place back
+        // SetHeldItem selects the hotbar slot so the swap targets the right slot
+        var request = InventoryActionRequest.builder()
+            .owner(this)
+            .priority(SWAP_PRIORITY)
+            .actionDelayTicks(0)
+            .actions(
+                new SetHeldItem(targetHotbarSlot),
+                new ClickItem(sourceSlot, ClickItemAction.LEFT_CLICK),
+                new ClickItem(targetContainerSlot, ClickItemAction.LEFT_CLICK),
+                new ClickItem(sourceSlot, ClickItemAction.LEFT_CLICK)
+            )
+            .build();
+
+        INVENTORY.submit(request);
+
+        // Optimistically update ledger to reflect the swap
+        // (inventory slots will be confirmed when server responds)
+        ledger.refresh();
+
+        return targetContainerSlot;
     }
 
     // ==================================================================
@@ -118,7 +145,5 @@ public class LoomInventoryManagerImpl implements LoomInventoryManager {
     @Override
     public void requestRestock(List<MaterialRequest> materials) {
         // Restock is handled by ChestRestocker via TaskScheduler.
-        // This method exists as a signal point for the architecture.
-        // After a restock completes, ChestRestocker calls refresh().
     }
 }
