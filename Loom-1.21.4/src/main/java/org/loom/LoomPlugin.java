@@ -112,7 +112,13 @@ public class LoomPlugin implements ZenithProxyPlugin {
             inventoryManager,
             loomLogger
         );
-        chestRestocker = new LoomChestRestocker();
+        chestRestocker = new LoomChestRestocker(
+            navigator,
+            inventoryManager,
+            loomLogger,
+            CONFIG.buildOriginX,
+            CONFIG.buildOriginZ
+        );
 
         // --- Step 5: Create orchestration services ---
         PrintStrategy printStrategy = new RowMajorStrategy();
