@@ -4,7 +4,9 @@ import org.loom.jobs.Job;
 import org.loom.jobs.JobManager;
 import org.loom.log.LoomLogger;
 import org.loom.printing.PrinterController;
+import org.loom.repair.LoomResetSystem;
 import org.loom.scheduling.PrintTask;
+import org.loom.scheduling.ResetTask;
 import org.loom.scheduling.TaskPriority;
 import org.loom.scheduling.TaskScheduler;
 import org.loom.schematic.SchematicManager;
@@ -19,13 +21,13 @@ import java.util.List;
 /**
  * Orchestrates automatic batch printing of all schematics in a directory.
  *
- * <p>Workflow matching Nerv's behavior:
+ * <p>Nerv-compatible workflow:
  * <ol>
- *   <li>Discover files in map folder, sort by length then alphabetically</li>
- *   <li>Load each as a schematic, create a job, submit a PrintTask</li>
- *   <li>When a print completes: move file to _finished_maps/</li>
- *   <li>Automatically advance to the next file</li>
- *   <li>Stop when no files remain</li>
+ *   <li>Print completes → move file to _finished_maps/</li>
+ *   <li>Submit ResetTask (HIGH priority, preempts everything)</li>
+ *   <li>Wait until ResetTask reports completion</li>
+ *   <li>Load next schematic, create job, submit PrintTask</li>
+ *   <li>Repeat until no files remain</li>
  * </ol>
  */
 public class BatchOrchestrator {
@@ -38,11 +40,16 @@ public class BatchOrchestrator {
     private final PrinterController printerController;
     private final AsyncLoomEventBus eventBus;
     private final LoomLogger logger;
+    private final LoomResetSystem resetSystem;
     private final String mapFolderPath;
+    private final int resetChestX;
+    private final int resetChestY;
+    private final int resetChestZ;
     private final boolean moveToFinished;
 
     private List<File> files;
     private int fileIndex;
+    private boolean waitingForReset;
 
     public BatchOrchestrator(SchematicManager schematicManager,
                               JobManager jobManager,
@@ -50,7 +57,9 @@ public class BatchOrchestrator {
                               PrinterController printerController,
                               AsyncLoomEventBus eventBus,
                               LoomLogger logger,
+                              LoomResetSystem resetSystem,
                               String mapFolderPath,
+                              int resetChestX, int resetChestY, int resetChestZ,
                               boolean moveToFinished) {
         this.schematicManager = schematicManager;
         this.jobManager = jobManager;
@@ -58,10 +67,15 @@ public class BatchOrchestrator {
         this.printerController = printerController;
         this.eventBus = eventBus;
         this.logger = logger;
+        this.resetSystem = resetSystem;
         this.mapFolderPath = mapFolderPath;
+        this.resetChestX = resetChestX;
+        this.resetChestY = resetChestY;
+        this.resetChestZ = resetChestZ;
         this.moveToFinished = moveToFinished;
         this.files = List.of();
         this.fileIndex = 0;
+        this.waitingForReset = false;
     }
 
     /**
@@ -82,17 +96,18 @@ public class BatchOrchestrator {
         }
 
         logger.info(TAG, "Found %d files in %s", files.size(), mapFolderPath);
-        submitNextFile();
+        submitNextPrint();
     }
 
     /**
-     * Called when a PrintTask completes. Moves the completed file
-     * and starts the next one.
+     * Called when a PrintTask completes.
+     * Moves the completed file and submits a ResetTask.
+     * The next print will begin when the reset finishes.
      */
     public void onPrintComplete(String jobId) {
-        if (fileIndex == 0 && files.isEmpty()) return;
+        if (!isActive()) return;
 
-        // Move completed file to _finished_maps/
+        // Move completed file
         if (fileIndex > 0 && fileIndex <= files.size()) {
             File completedFile = files.get(fileIndex - 1);
             if (moveToFinished) {
@@ -100,20 +115,57 @@ public class BatchOrchestrator {
             }
         }
 
-        // Submit next file
-        if (fileIndex < files.size()) {
-            submitNextFile();
-        } else {
-            logger.info(TAG, "Batch complete — all %d files processed", files.size());
+        // Find the active job to get its origin for the reset
+        var activeJob = jobManager.getActiveJob();
+        if (activeJob.isEmpty() && !files.isEmpty()) {
+            // Recreate a job reference from the completed file info
+            logger.warn(TAG, "No active job found for reset, skipping reset phase");
+            advanceToNextFile();
+            return;
         }
+
+        Job job = activeJob.orElse(null);
+        if (job == null) {
+            advanceToNextFile();
+            return;
+        }
+
+        // Submit reset — the next print will begin via onResetComplete()
+        logger.info(TAG, "Submitting reset for job %s", job.getId());
+        waitingForReset = true;
+        ResetTask resetTask = new ResetTask(job, resetSystem, this,
+            resetChestX, resetChestY, resetChestZ);
+        taskScheduler.submit(resetTask, TaskPriority.HIGH);
+    }
+
+    /**
+     * Called when the ResetTask completes or fails.
+     * Advances to the next file in the batch.
+     */
+    public void onResetComplete(boolean failed) {
+        if (failed) {
+            logger.warn(TAG, "Reset failed, continuing to next file");
+        }
+        waitingForReset = false;
+        advanceToNextFile();
+    }
+
+    /**
+     * Returns true if the batch still has files to process.
+     */
+    public boolean isActive() {
+        return fileIndex > 0 || !files.isEmpty();
     }
 
     // ==================================================================
     // Internal
     // ==================================================================
 
-    private void submitNextFile() {
-        if (fileIndex >= files.size()) return;
+    private void submitNextPrint() {
+        if (fileIndex >= files.size()) {
+            logger.info(TAG, "Batch complete — all %d files processed", files.size());
+            return;
+        }
 
         File file = files.get(fileIndex);
         fileIndex++;
@@ -122,14 +174,14 @@ public class BatchOrchestrator {
 
         try {
             var schematic = schematicManager.loadSchematic(file.getAbsolutePath());
-            int originX = 0; // Will be set by PrinterController from config
+            int originX = 0;
             int originY = 0;
             int originZ = 0;
 
             Job job = jobManager.createJob(schematic.getId(), originX, originY, originZ);
             if (job == null) {
                 logger.warn(TAG, "Failed to create job for %s, skipping", file.getName());
-                submitNextFile();
+                advanceToNextFile();
                 return;
             }
 
@@ -137,7 +189,15 @@ public class BatchOrchestrator {
             taskScheduler.submit(task, TaskPriority.NORMAL);
         } catch (Exception e) {
             logger.error(TAG, "Failed to load " + file.getName(), e);
-            submitNextFile();
+            advanceToNextFile();
+        }
+    }
+
+    private void advanceToNextFile() {
+        if (fileIndex < files.size()) {
+            submitNextPrint();
+        } else {
+            logger.info(TAG, "Batch complete — all %d files processed", files.size());
         }
     }
 
@@ -147,7 +207,6 @@ public class BatchOrchestrator {
         File dest = new File(finished, file.getName());
 
         try {
-            // Handle collisions: append (1), (2), etc.
             File uniqueDest = dest;
             int collision = 1;
             while (uniqueDest.exists()) {

@@ -1,24 +1,29 @@
 package org.loom.scheduling;
 
+import org.loom.batch.BatchOrchestrator;
 import org.loom.jobs.Job;
 import org.loom.repair.LoomResetSystem;
 
 /**
- * Nerv-compatible reset task. Preempts printing at HIGH priority.
+ * A task that drives {@link LoomResetSystem} to clear the build area.
+ *
+ * <p>When the reset completes, notifies the {@link BatchOrchestrator}
+ * so it can advance to the next file in the batch.
  */
 public class ResetTask extends Task {
 
     private final Job job;
     private final LoomResetSystem resetSystem;
-    private final int chestX;
-    private final int chestY;
-    private final int chestZ;
+    private final BatchOrchestrator orchestrator;
+    private final int chestX, chestY, chestZ;
 
     public ResetTask(Job job, LoomResetSystem resetSystem,
+                      BatchOrchestrator orchestrator,
                       int chestX, int chestY, int chestZ) {
         super("ResetTask-" + job.getId());
         this.job = job;
         this.resetSystem = resetSystem;
+        this.orchestrator = orchestrator;
         this.chestX = chestX;
         this.chestY = chestY;
         this.chestZ = chestZ;
@@ -35,13 +40,17 @@ public class ResetTask extends Task {
     }
 
     @Override
-    public void onPause() {
-        resetSystem.cancel();
-    }
+    public void onPause() { resetSystem.cancel(); }
 
     @Override
     public void onFail(Throwable cause) {
         resetSystem.cancel();
+        if (orchestrator != null) orchestrator.onResetComplete(true);
+    }
+
+    @Override
+    public void onComplete() {
+        if (orchestrator != null) orchestrator.onResetComplete(false);
     }
 
     @Override

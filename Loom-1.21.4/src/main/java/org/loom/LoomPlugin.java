@@ -28,6 +28,7 @@ import org.loom.printing.SnakeStrategy;
 import org.loom.printing.RowMajorStrategy;
 import org.loom.recovery.LoomRecoverySystem;
 import org.loom.recovery.RecoverySystem;
+import org.loom.repair.LoomResetSystem;
 import org.loom.repair.LoomErrorRepair;
 import org.loom.repair.LoomResetSystem;
 import org.loom.scanning.LoomWorldScanner;
@@ -85,6 +86,7 @@ public class LoomPlugin implements ZenithProxyPlugin {
     static WorldScanner worldScanner;
     static LoomModule loomModule;
     public static BatchOrchestrator batchOrchestrator;
+    static LoomResetSystem resetSystem;
 
     @Override
     public void onLoad(PluginAPI pluginAPI) {
@@ -164,10 +166,15 @@ public class LoomPlugin implements ZenithProxyPlugin {
 
         jobManager = new LoomJobManager(schematicManager, progressTracker, loomLogger);
 
+        resetSystem = new LoomResetSystem(navigator, worldScanner, loomLogger);
+
         batchOrchestrator = new BatchOrchestrator(
             schematicManager, jobManager, taskScheduler,
             printerController, eventBus, loomLogger,
-            CONFIG.mapFolderPath, CONFIG.moveToFinishedFolder
+            resetSystem,
+            CONFIG.mapFolderPath,
+            CONFIG.storageX, CONFIG.storageY, CONFIG.storageZ,
+            CONFIG.moveToFinishedFolder
         );
 
         recoverySystem = new LoomRecoverySystem(
