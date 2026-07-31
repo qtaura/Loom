@@ -11,6 +11,7 @@ import org.loom.log.LoomLogger;
 import org.loom.scanning.WorldScanner;
 import org.loom.util.Material;
 
+import static com.zenith.Globals.BARITONE;
 import static com.zenith.Globals.CACHE;
 import static com.zenith.Globals.INPUTS;
 
@@ -18,17 +19,9 @@ import static com.zenith.Globals.INPUTS;
  * Default implementation of {@link PlacementEngine}.
  *
  * <p>Uses ZenithProxy's input system for rotation and direct packet sends
- * for block placement. This is the <b>only</b> subsystem in Loom allowed
- * to interact with {@code INPUTS}, send placement packets, or control
- * player rotation for placement purposes.
+ * for block placement. Breaking operations are stateful and multi-tick.
  *
- * <h3>Single-Shot Design</h3>
- * <p>Each call to {@code placeBlock} or {@code placeCarpet} performs exactly
- * one placement attempt: pre-checks, rotation, packet send, return.
- * Verification and retry logic belong to the caller
- * ({@link org.loom.printing.PrinterController}).
- *
- * <h3>Placement Pipeline</h3>
+ * <h3>Placement (stateless)</h3>
  * <ol>
  *   <li>Pre-checks: obstruction, material availability, reach distance</li>
  *   <li>Select correct hotbar slot via {@link LoomInventoryManager}</li>
@@ -38,7 +31,14 @@ import static com.zenith.Globals.INPUTS;
  *   <li>Return {@link PlacementResult#SUCCESS}</li>
  * </ol>
  *
- * <p>The engine is stateless between calls.
+ * <h3>Breaking (stateful, multi-tick)</h3>
+ * <ol>
+ *   <li>Validate target exists and is reachable</li>
+ *   <li>Submit breaking to Zenith {@code BARITONE.breakBlock()}</li>
+ *   <li>Return {@link BreakResult#IN_PROGRESS} each tick while BARITONE is active</li>
+ *   <li>When BARITONE completes, verify via {@link WorldScanner}</li>
+ *   <li>Return {@link BreakResult#SUCCESS} or {@link BreakResult#FAILED}</li>
+ * </ol>
  */
 public class LoomPlacementEngine implements PlacementEngine {
 
@@ -49,6 +49,11 @@ public class LoomPlacementEngine implements PlacementEngine {
     private final WorldScanner worldScanner;
     private final LoomInventoryManager inventoryManager;
     private final LoomLogger logger;
+
+    // --- Break state (one active break at a time) ---
+    private int breakTargetX = -1;
+    private int breakTargetY = -1;
+    private int breakTargetZ = -1;
 
     public LoomPlacementEngine(WorldScanner worldScanner,
                                LoomInventoryManager inventoryManager,
@@ -129,6 +134,73 @@ public class LoomPlacementEngine implements PlacementEngine {
         float pitch = (float) -Math.toDegrees(Math.atan2(dy, hDist));
 
         return new Rotation(yaw, pitch);
+    }
+
+    // ======================================================================
+    // Break API (stateful, multi-tick)
+    // ======================================================================
+
+    @Override
+    public BreakResult breakBlock(int worldX, int worldY, int worldZ) {
+        // --- Check if target is already broken ---
+        var current = worldScanner.getBlockAt(worldX, worldY, worldZ);
+        if (current.isAir()) {
+            logger.debug(TAG, "Already broken at (%d,%d,%d)", worldX, worldY, worldZ);
+            clearBreakState();
+            return BreakResult.ALREADY_AIR;
+        }
+
+        // --- Check if breaking a different block ---
+        if (isBreakingDifferent(worldX, worldY, worldZ)) {
+            logger.debug(TAG, "Break target changed from (%d,%d,%d) to (%d,%d,%d)",
+                breakTargetX, breakTargetY, breakTargetZ, worldX, worldY, worldZ);
+            BARITONE.stop();
+            clearBreakState();
+        }
+
+        // --- Check if breaking in progress ---
+        if (breakTargetX == worldX && breakTargetY == worldY && breakTargetZ == worldZ) {
+            if (BARITONE.isActive()) {
+                return BreakResult.IN_PROGRESS;
+            }
+            // BARITONE finished — verify
+            current = worldScanner.getBlockAt(worldX, worldY, worldZ);
+            if (current.isAir()) {
+                logger.debug(TAG, "Break confirmed at (%d,%d,%d)", worldX, worldY, worldZ);
+                clearBreakState();
+                return BreakResult.SUCCESS;
+            }
+            logger.debug(TAG, "BARITONE finished but block not broken at (%d,%d,%d)",
+                worldX, worldY, worldZ);
+            clearBreakState();
+            return BreakResult.FAILED;
+        }
+
+        // --- Check reach ---
+        if (!isInReach(worldX, worldY, worldZ)) {
+            logger.debug(TAG, "Break target (%d,%d,%d) out of reach", worldX, worldY, worldZ);
+            return BreakResult.OUT_OF_REACH;
+        }
+
+        // --- Start breaking ---
+        breakTargetX = worldX;
+        breakTargetY = worldY;
+        breakTargetZ = worldZ;
+
+        BARITONE.breakBlock(worldX, worldY, worldZ, true);
+        logger.debug(TAG, "Started breaking at (%d,%d,%d)", worldX, worldY, worldZ);
+        return BreakResult.IN_PROGRESS;
+    }
+
+    private boolean isBreakingDifferent(int x, int y, int z) {
+        return breakTargetX >= 0
+            && (breakTargetX != x || breakTargetY != y || breakTargetZ != z);
+    }
+
+    private void clearBreakState() {
+        breakTargetX = -1;
+        breakTargetY = -1;
+        breakTargetZ = -1;
     }
 
     // ======================================================================
