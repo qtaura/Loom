@@ -5,11 +5,9 @@ import com.zenith.plugin.api.PluginAPI;
 import com.zenith.plugin.api.ZenithProxyPlugin;
 import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
 import org.loom.batch.BatchOrchestrator;
-import org.loom.command.BuildCommand;
 import org.loom.command.ConfigCommand;
 import org.loom.command.LoomCommand;
 import org.loom.command.SchematicCommand;
-import org.loom.command.StatusCommand;
 import org.loom.inventory.LoomInventoryManager;
 import org.loom.inventory.LoomInventoryManagerImpl;
 import org.loom.inventory.restock.ChestRestocker;
@@ -25,10 +23,8 @@ import org.loom.printing.PlacementEngine;
 import org.loom.printing.PrinterController;
 import org.loom.printing.PrintStrategy;
 import org.loom.printing.SnakeStrategy;
-import org.loom.printing.RowMajorStrategy;
 import org.loom.recovery.LoomRecoverySystem;
 import org.loom.recovery.RecoverySystem;
-import org.loom.repair.LoomResetSystem;
 import org.loom.repair.LoomErrorRepair;
 import org.loom.repair.LoomResetSystem;
 import org.loom.scanning.LoomWorldScanner;
@@ -86,7 +82,6 @@ public class LoomPlugin implements ZenithProxyPlugin {
     static WorldScanner worldScanner;
     static LoomModule loomModule;
     public static BatchOrchestrator batchOrchestrator;
-    static LoomResetSystem resetSystem;
 
     @Override
     public void onLoad(PluginAPI pluginAPI) {
@@ -165,8 +160,6 @@ public class LoomPlugin implements ZenithProxyPlugin {
         taskScheduler = new LoomTaskScheduler(loomLogger);
 
         jobManager = new LoomJobManager(schematicManager, progressTracker, loomLogger);
-
-        resetSystem = new LoomResetSystem(navigator, worldScanner, loomLogger);
 
         batchOrchestrator = new BatchOrchestrator(
             schematicManager, jobManager, taskScheduler,
